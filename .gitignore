@@ -361,7 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/Build
+# 排除 Build/ 生成物，但保留验证编排脚本（AGENTS.md 铁律5：验证命令必须可执行可复现）
+/Build/*
+!/Build/*.ps1
+!/Build/g4-soak.bat
 /.idea/.idea.Legend of Mir/.idea
 /.idea/config
 
