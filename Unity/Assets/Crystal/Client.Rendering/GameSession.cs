@@ -39,7 +39,6 @@ namespace Crystal.Client.Rendering
 
         static string _account = string.Empty, _password = string.Empty;
         static bool _didNewAccount;
-        static int _charIndex;
 
         public static void Connect(string ip, int port)
         {
@@ -63,12 +62,20 @@ namespace Crystal.Client.Rendering
                 Network.Enqueue(new C.Login { AccountID = _account, Password = _password });
         }
 
+        // 按列表位置选号（OnSelectReady 回调用）：服务端按角色真实 Index 匹配，须经 Characters[index].Index 解析
+        // （列表位置≠角色 Index，DB 主键从 1 起；直接传位置会 startgame-rejected:2）。
         public static void SelectCharacter(int index)
         {
             if (State != GameSessionState.Select && State != GameSessionState.Creating) return;
-            _charIndex = index;
+            if (index < 0 || index >= Characters.Count) return;
+            StartGameByIndex(Characters[index].Index);
+        }
+
+        // 建号成功路径：新角色 Index 仅来自 S.NewCharacterSuccess.CharInfo（服务端不再重发 LoginSuccess）。
+        static void StartGameByIndex(int characterIndex)
+        {
             State = GameSessionState.Entering;
-            Network.Enqueue(new C.StartGame { CharacterIndex = index });
+            Network.Enqueue(new C.StartGame { CharacterIndex = characterIndex });
         }
 
         public static void CreateCharacter(string name, MirGender gender, MirClass cls)
@@ -137,7 +144,7 @@ namespace Crystal.Client.Rendering
                     break;
                 case (short)ServerPacketIds.NewCharacterSuccess:
                     var ncs = (S.NewCharacterSuccess)p;
-                    SelectCharacter(ncs.CharInfo.Index);
+                    StartGameByIndex(ncs.CharInfo.Index);
                     break;
                 case (short)ServerPacketIds.StartGame:
                     var sg = (S.StartGame)p;

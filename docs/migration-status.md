@@ -646,3 +646,19 @@
 - **首分组标题行占位**：UpdateText 先插分组标题行使 groupCount+1 → 首个 KeybindRow 的 y 重算 +30 → 首行按钮屏坐标 (390,150) 非 (390,120)（分组标题行 Size(400,40) 覆盖 (45,120)-(445,160)，按钮 (390,150) 120×16 叠其上）；
 - **KeyBinds.ini 副作用**：KeyBindSettings ctor 无 ini 时 `Save(DefaultKeylist)` 落盘到 Unity 工程 cwd（`Unity/KeyBinds.ini`，Inventory=F9 requires=2），Unity/ 已 gitignore 不污染仓库；探针 CheckNewInput 仅改内存不落盘，重跑确定性；
 - **控件创建顺序契约**：ChatDialog ctor 读 `Scene.MainDialog.Location` + ChatOptionDialog ctor 调 `ChatDialog.Update()` → 探针须先 `Scene.MainDialog=main` 再 `Scene.ChatDialog=chat` 再 `new ChatOptionDialog`。
+
+## 阶段6 PC Player（C1-C3 运行时地基）
+
+按 PRD 阶段6 第 2 项：把 batchmode 探针逻辑升级为可运行 StandaloneWindows Player。拆 C1-C5，本段覆盖 C1-C3（渲染核心/网络会话/主循环+输入壳）。C4 uGUI UI、C5 BuildPC 场景接线随后。
+
+**C1 GameRenderer（`Client.Rendering/GameRenderer.cs`）**：从 SceneRender/MapRender 抽取运行时渲染核心，去 UnityEditor 依赖，探针/Player 共用同一渲染路径。覆盖 MapLibs 段映射（MapLibRel：0-99 WemadeMir2 / 100-199 ShandaMir2 / 200-299 WemadeMir3）+ 图集缓存 + DrawMapTiles 三层 tile + BuildLibIndex 预构建 libIndex→AtlasLibrary。验证 `Build/gamerenderverify.ps1` → `GameRendererVerify`：同场景与已证正确的 SceneRender 逐像素对照 **diff=0 / nonBg=737280（1152×640 全屏非背景）PASS**。
+
+**C2 GameSession（`Client.Rendering/GameSession.cs`）**：从 NetProbe 抽取核心协议（去断言/编排）。登录状态机（ClientVersion→Login→自适应 NewAccount 建号防 24h IP ban→LoginSuccess→NewCharacter/选号→StartGame→InGame）+ 进图（MapInformation→LoadMap，UserInformation→EnsureUser）+ 对象分发（ObjectMonster/Npc/Turn/Walk/Run/Remove/UserLocation）。验证 `Build/gamesessionverify.ps1` → `GameSessionVerify`：真实服务器 登录→自动建号 pcplayer→进图 nn0，**objects=26 其中 19 怪物，render nonBg=655360 PASS**。
+
+**C3 GameRuntime（`Client.Rendering/GameRuntime.cs` + `GameBootstrap.cs`）**：运行时主循环。`CMain.Time` 真实时钟（Stopwatch 驱动）+ GameSession.Process + 对象 Process（跳过 User）+ 屏幕/RT 渲染（User 中心 DrawMapTiles + 对象 y-sort + BodyLibrary.DrawIndex，BuildLibIndex 跨帧缓存——同地图零重建，G2 性能教训）。GameBootstrap MonoBehaviour 薄壳（Update→Tick + WASD/Shift→C.Walk/C.Run 8 方向轮询节流），由 BuildPC 挂 Main.unity（C5）。验证 `Build/gameruntimeverify.ps1` → `GameRuntimeVerify`：**state=InGame objects=30 drawn=29（怪物/NPC 实际绘制）nonBg=655360 PASS**。
+
+**关键实证与踩坑（C1-C3）**：
+- **选号须用角色真实 Index 非列表位置**：`C.StartGame{CharacterIndex}` 服务端按 DB 主键（从 1 起）匹配；GameSession 初版传 `Characters[index]` 列表位置，建号路径（NewCharacterSuccess 带真实 Index）侥幸通过，选号路径（已有角色）暴露 **startgame-rejected:2**。修复：`SelectCharacter(index)` 经 `Characters[index].Index` 解析，建号成功直接 `StartGameByIndex(CharInfo.Index)`（服务端建号后不重发 LoginSuccess，新角色 Index 仅来自 NewCharacterSuccess）；
+- **渲染目标可配置**：`CrystalSpriteBatch.Begin(target, w, h)` target=null 直渲屏幕（Player 运行时）、RT（batchmode 探针），GameRuntime.Tick(target) 单一路径双用；
+- **对象渲染前置条件**：BodyLibrary 由 GameSession.EnsureObjectLib 注入（`Libraries.Monsters[img]`）+ `o.Process()` 计算 DrawFrame/DrawLocation；DrawLocation 依赖 `MapControl.OffSetX/Y`（屏幕尺寸派生常量），先于 Process 设置；User 为裸 UserObject（无装备图集）→ 渲染/Process 均跳过（NetProbe 实证同款），角色自身外观渲染待装备包处理（后续迭代）；
+- **PowerShell 5.1 无 BOM UTF-8 中文注释解析失败**：gameruntimeverify.ps1 用纯 ASCII 注释规避（gamerenderverify.ps1 含中文但跑通，遗留隐患，触及时改）。
