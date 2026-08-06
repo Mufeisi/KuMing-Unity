@@ -16,7 +16,6 @@ $projects = @(
     "Shared/Shared.csproj",
     "Server/Server.Library.csproj",
     "Server.MirForms/Server.csproj",
-    "Client/Client.csproj",
     "Controls/FixedListViewControl/CustomFormControl.csproj",
     "LibraryEditor/LibraryEditor.csproj",
     "LibraryViewer/LibraryViewer.csproj",
@@ -41,11 +40,9 @@ if ($failed.Count -gt 0) {
 # 记录关键产物 SHA256
 $hashOut = "docs/build-artifact-hashes.txt"
 $targets = @(
-    "Build/Client/$Configuration/Client.exe",
     "Build/Server/$Configuration/Server.exe",
     "Build/Server/$Configuration/Server.Library.dll",
-    "Build/Server/$Configuration/Shared.dll",
-    "Build/Client/$Configuration/Shared.dll"
+    "Build/Server/$Configuration/Shared.dll"
 )
 $lines = @("# Crystal build artifacts SHA256 ($(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), config=$Configuration)")
 foreach ($t in $targets) {
