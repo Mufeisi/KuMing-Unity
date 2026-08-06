@@ -5,7 +5,7 @@
 
 ## 当前阶段
 
-**G0 可重复基线（构建已固定；运行时数据已就位；基线录制仍被客户端资源阻塞）**
+**G0 可重复基线（构建已固定；运行时数据已就位；基线录制阻塞已解除——验收路径改为 golden 直解 + 真实服务器探针双断言，见 backlog ③）**
 **服务端网络现代化（B1 完成 + G1 500 连接压测达标：SAEA 收发 + 主循环包预算 + 状态端口对齐，trace/压测双 harness 验证）**
 **Shared 多目标化完成（`netstandard2.1;net8.0`；Unity 侧改为源码 asmdef 编译，见下方 ADR）**
 **服务端性能（B2：账号存库后台化完成，8h soak 运行中）**
@@ -30,7 +30,7 @@
 **阶段3 渲染 Spike（R10 玩家场景合成）：`SceneRender` 扩展玩家对象（`p:<action>:<dir>:<frame>:<x>:<y>:<armour>:<hair>:<weapon>:<gender>` 10 段规范，`ResolvePlayer` 复用 R9 语义：FrameSet.Player + CArmour/CHair/CWeapon 图集 + DrawFrame 公式 + Gender offset；`AddLayer` 将 Body/Hair/Weapon 存为独立 `ObjLayer`（各自 Src/TW/TH），`DrawScene` 按 Body→Hair→Weapon 层叠绘制）接入 y-sort（按 (Y,X) 行主序先远后近）。**验证 6 变体全 PASS fail=0**：①玩家近怪物远（玩家覆盖怪物）②玩家-玩家相邻（两角色层叠遮挡）③女玩家+怪物（Walking dir3）④玩家 Attack1 dir1 f2（动态帧选择）⑤玩家无武器（weapon=-1 跳过 Weapon 层）⑥男/女玩家同行。**关键 bug 修复：VerifyOcclusion far-only 分支对玩家 far 改用 `RenderColorAt` 取实际渲染色**——原用代表帧 Body 色 `far.Src`，但玩家 far 自身 hair/weapon 层可覆盖 Body 像素（实测 (599,208) 期望 E0B890 实际 482410=hair 色），致 4/6 变体 false fail；overlap 分支本已用 RenderColorAt，统一后全过。**像素实证**：RT(599,208)=482410=far 玩家 hair 顶层色，验证逻辑期望必须用 RenderColorAt 顶层色而非 Body 色
 **阶段3 渲染 Spike（R11 真实对象状态机驱动，阶段 3 收官）：用逐字移植的真实 `MonsterObject`/`PlayerObject` 状态机取代 R10 手工 spec 驱动场景渲染**。`MLibraryUnity`（`Client.Rendering`，renderable MLibrary：继承 seam `MLibrary`、`AtlasLibrary` 图集 + `DrawIndex(index,point,color,offSet,opacity)` 渲染内核 + `BridgeFrames` 将 manifest `FrameEntry`→`FrameSet` 按 `ActionId==MirAction` 数值 cast）接入 `Libraries` 数组（`Libraries.Monsters[img]`/`CArmours`/`CHair`/`CWeapons` 写回），真实对象 `Load` 时命中。`RunObjects`（`CRYSTAL_OBJSPEC`：怪物 `m:<image>:<action>:<dir>:<frame>:<x>:<y>` 7 段 / 玩家 `p:<action>:<dir>:<frame>:<x>:<y>:<armour>:<hair>:<weapon>:<gender>:<class>` 11 段）建相机（`MapObject.User` + `GameScene.Scene` + `GameScene.CanMove=false` + `MapControl.OffSetX/Y`）→ 预 EnsureMLibrary → 构造真实对象 `Load` → 逐帧 `Process()`（`CMain.Time` 步进）→ 验证（数据级 `DrawFrame` 同 R10 公式 + 像素级 `VerifyPresence`/`VerifyOcclusion` + 地图 `DrawMapTiles` 复用）。**验证矩阵全过**：V1-V4 怪物（Standing/Attack1/Walking 状态机 `dataMatch=True` + 像素 fail=0，Walking 真实锚点含 Moving OffSet）；V5 双怪 y-sort fail=0；V6-V8 玩家（男/女 `dataMatch=True` + layers=3 Body/Hair/Weapon + fail=0）。**强等价回归：R11 vs R10 同 spec PNG 逐像素 diff=0**（Standing+Attack1 组 / 双怪组 / 玩家组）。**踩坑与修复**：①`MonsterObject` 为 internal（移植疏漏，其余 Ported 类皆 public）→ 改 public；②`objs.Sort` 未同步 `realObjs` → 渲染错位（反向遮挡致 Standing false fail）→ `Obj.Real` 携带真实对象引用，渲染/验证从 objs 取；③`S.ObjectPlayer.TransformType` 默认 0 → `if (TransformType > -1)` 误入 Transform 分支 `BodyLibrary=Transform[0]=null`（玩家全未画，got=背景色）→ Load 显式 `TransformType=-1`；④女玩家 `ArmourOffSet=808` 由真实 `SetLibraries` Others case 计算（非 R10 手工硬编码）；⑤真实 `Draw` 有方向相关武器层，R11 对齐 R10 用 `WeaponLibrary1` 单层补画；⑥R11 渲染循环漏地图 → 提取 `DrawMapTiles` helper（R10 `DrawScene` 与 R11 `RunObjects` 共用，DRY）
 
-**阶段4 端到端垂直链路（P4-M1 登录链路 + P4-M2 选角进图 + P4-M3 GameScene 主循环 + P4-M4 五类交互 + P4-M5 下线/HUD/持续游玩完成：Unity 客户端对真实服务器走通 登录→选角→进图→对象 spawn/移动/渲染→战斗→拾取→背包→NPC→聊天→下线→HUD，服务器零修改；Gate G4 判定收尾中）**
+**阶段4 端到端垂直链路（P4-M1 登录链路 + P4-M2 选角进图 + P4-M3 GameScene 主循环 + P4-M4 五类交互 + P4-M5 下线/HUD/持续游玩完成：Unity 客户端对真实服务器走通 登录→选角→进图→对象 spawn/移动/渲染→战斗→拾取→背包→NPC→聊天→下线→HUD，服务器零修改；✅ Gate G4 判定 GO（见下方 P4-M5 节：全链路 7/7 探针 + 双开对照 + 2h soak PASS））**
 **阶段5 UI 系统（迭代包1 完成：纯 C# 兼容控件 + RT 直绘方案落地——控件基类最小契约 + ChatDialog 完整移植 + MainDialog HUD 状态条移植进 Client.Core，UiText 渲染桥（Unity 动态字体字形预构建）接 TextRenderer seam，真实 MainDialog+ChatDialog 控制树经 `net-ui.ps1`→`NetProbe.RunUi` 合成 RT(1024×768) 出 PNG，数据断言（HP 154/154/lvl=1/name=probe/exp=0%/chat=4）+ 像素断言（HP/name 白字形、orb 红区、聊天面板、蓝/红/绿/暗红四行彩底）**全 PASS exit 0**）**
 **阶段5 UI 系统（迭代包2 完成：背包/装备/Tooltip 控制树渲染 + 交互输入——MainDialog 顶部功能按钮点击链 hover→pressed→click→开/关对话框 + ChatTextBox 输入光标，`net-input.ps1`/`net-bag.ps1`/`net-ui.ps1` + CoreVerify 0w/0e 全绿）**
 **阶段5 UI 系统（迭代包3 完成：NPC 对话 + 商店 8 格 + 仓库 10×16 网格控制树渲染，`net-npc.ps1`→`NetProbe.RunNpc` 出 PNG，数据断言 npc=4/goods=2/storeGrid=160 + 像素断言全过，回归矩阵 4 脚本 + CoreVerify 0w/0e 全绿）**
@@ -90,7 +90,7 @@
 | 场景 | `Client/MirScenes/GameScene.cs`（12.5k 行） | 未迁移（需先拆分） | — |
 | UI | `Client/MirControls/`、`MirScenes/Dialogs/` | 未迁移（需 uGUI 化） | — |
 | 网络(客户端) | `Client/MirNetwork/Network.cs` | 未迁移 | — |
-| 网络(服务端) | `Server/MirNetwork/MirConnection.cs` | 进行中（B1-H0 完成，改造未开始） | B1 |
+| 网络(服务端) | `Server/MirNetwork/MirConnection.cs` | ✅ 已完成（B1-H0/a/b/c/d：SAEA 接收 + 主循环包预算 + 合并发送/部分发送 + 状态端口对齐；G1 500 连接压测达标，trace 回归 23 包 diff 空） | B1 |
 | 主循环 | `Server/MirEnvir/Envir.cs` | 未迁移 | — |
 | 音频 | `Client/MirSounds/` | 未迁移 | — |
 | 输入 | `Client/KeyBindSettings.cs` | 未迁移 | — |
@@ -112,7 +112,7 @@
 - 构建产物哈希：`docs/build-artifact-hashes.txt`（2026-08-04 Debug；2026-08-06 审计复跑 build.ps1 全 9 项目 0 错误后重写）
 - 可启动服务端运行时：`Build/Server/publish/`（Release 发布版 + 用户提供的 EliteMir2 `Server_EN` 数据：`Server.MirDB` 版本 117 = Crystal `Version`，2338 张 `.map`、24 个 `Configs`、`Envir` 脚本，已验证正常启动）
 - 游戏画面/封包基线：**未录制**——验收路径已变更（golden 直解 + 真实服务器探针双断言），见 `docs/backlog.md` ③
-- **git 提交历史（2026-08-06 审计修复后）**：`e353a0b` G0 基线 → `a23ac9b` G0 基线文档 → `995a3ac` 全量快照（G0 后 B1→阶段6 全部工作入库，审计 P0 修复）→ `e7ffadf` 钓鱼补验（阶段6 10/11）→ `85b6eab` Build/ 验证脚本入库（审计 P1 修复）。后续任务须"每任务一 commit + 主会话验收"，不再积压工作区。
+- **git 提交历史（2026-08-06 审计修复后）**：`e353a0b` G0 基线 → `a23ac9b` G0 基线文档 → `995a3ac` 全量快照（G0 后 B1→阶段6 全部工作入库，审计 P0 修复）→ `e7ffadf` 钓鱼补验（阶段6 10/11）→ `85b6eab` Build/ 验证脚本入库（审计 P1 修复）→ `3e437bb` 基线快照节记录提交历史 → `81c3f74` 天气补验（阶段6 11/11 + DrawIndex opacity bug 修复）。后续任务须"每任务一 commit + 主会话验收"，不再积压工作区。
 
 ## 服务端网络现代化进度（B1）
 
@@ -150,7 +150,7 @@
 | B2-0 测量决定 B2 项排序 | ✅ 完成 | 结论：广播空间索引**否决**（见 ADR：DataRange=16 → 1089 格 vs O(P) 线性扫，实际每图玩家 << 1089）；存库后台化收益最大 |
 | B2-2 账号存库后台化 | ✅ 完成 | `Envir.cs`：`BeginSaveAccounts` 主线程浅快照（`AccountSaveSnapshot` 含 ID 计数器防撕裂）→ `Task.Run` 序列化 → `WriteAccountsFile`（先写 `.n` 再备份再交换，任一步失败当前文件保持有效，比原"先移备份"更稳）；同步 `SaveAccounts` 等 `Saving` 排空后写终态；`SaveDB` 保持同步（549KB 静态数据 ~1ms） |
 | B2-2 验证 | ✅ 完成 | 90s 压测触发周期存库：`verify-b2/Server.MirADB` 10:30 重写 + `Back Up/Accounts/` 生成 1 个备份 + 无 `.n`/`.o` 残留；trace 回归 23 包与基线 diff 空；conn_process P95=0ms |
-| B2-2 8h soak | ⏳ 运行中 | `ServerStress-b2 --data verify-b2 --conns 500 --secs 28800`（修复后 harness：IPBlock/MaxUser 覆写生效，500 连接真 accept；后台任务 bzk40si73） |
+| B2-2 8h soak | ⚠️ **已中断（2026-08-06 核查）**：后台任务跨会话不存活，`verify-b2/Server.MirADB` 最后写 08-04 19:57、备份止于 02:40（B2-2 90s 验证数据），无 8h 跨度存库记录。8h 长稳属性能验证非功能缺失；B2-2 核心（存库后台化不阻塞主循环）已由 90s 压测 + trace 回归 + conn_process P95=0ms 验证。**处置**：如需 8h 长稳证据后台重跑（本会话可挂 `ServerStress-b2 --data verify-b2 --conns 500 --secs 28800`）；否则标记为「以 90s 压测 + 周期存库实证替代」关闭 | B2 |
 
 **Harness cwd 修复（B2-2 发现）：**
 - 旧 `ServerStress/ServerTrace` 的 `Host()` 在 boot 后 `finally` 还原 `Environment.CurrentDirectory` → 服务端运行期相对路径（`AccountPath`/`DatabasePath`/`AccountsBackUpPath`）按调用时 cwd 解析 → **周期存库写到了 repo 根目录**（曾产生 `Server.MirADB`/`Server.MirDB`/`Back Up/` 20+ 备份污染，已清理）。
