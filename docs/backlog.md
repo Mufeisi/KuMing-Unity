@@ -18,6 +18,7 @@
 
 - [ ] **Android 软键盘（阶段7 第 3 项子项）** — 空场景无输入框消费方（MirTextBox 未在移动端运行），`TouchScreenKeyboard` 桥接推迟至登录/聊天 UI 移动化时一并做。
 - [ ] **Android 安全区适配（阶段7 第 2 项子项）** — 当前空场景无移动 UI，`Screen.safeArea`/凹口适配无可验证目标；推迟至触控 HUD/移动资源包阶段一并做。
+- [ ] **iOS 构建与签名环境（阶段7 第 6 项子项，PRD 行 883）** — Windows 只完成 iOS 配置流水线（`BuildIOS.cs` + `BuildIOSVerify` 探针 PASS）；Xcode 工程构建、真机签名（`CRYSTAL_IOS_TEAMID` env → TeamID）、TestFlight 上传需 macOS + Xcode + 开发者证书。G7 双端真机门禁（登录/进图/移动/重连）在 macOS 环境补齐。
 - [ ] **PatcherWebSite 遗留网站项目**（.NET Framework 4.8）阻塞解决方案级 `dotnet build`（MSB4249）— `Legend of Mir.sln`。
   - 建议：与三端迁移无关；要么从解决方案卸载，要么文档注明仅 VS2022 全 MSBuild 可构建。
 - [ ] `docs/build-artifact-hashes.txt` 首字节带 UTF-8 BOM（PowerShell `Set-Content`），不影响使用。
