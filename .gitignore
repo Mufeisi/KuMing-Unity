@@ -375,6 +375,7 @@ FodyWeavers.xsd
 /Unity/[Ll]ogs/
 /Unity/[Uu]ser[Ss]ettings/
 /Unity/MemoryCaptures/
+/Unity/.utmp/
 /Unity/*.csproj
 /Unity/*.sln
 /Unity/Assets/Plugins/Shared/
@@ -384,3 +385,5 @@ FodyWeavers.xsd
 /Unity/KeyBinds.ini
 # Reasonix 工具元数据（附件/桌面会话状态，非项目源码）
 /.reasonix/
+# Unity Android 构建产物（APK 不入库，阶段7 产物）
+/Unity/Build/Android/
