@@ -109,9 +109,10 @@
 
 ## 基线快照（G0 已记录）
 
-- 构建产物哈希：`docs/build-artifact-hashes.txt`（2026-08-04 Debug）
+- 构建产物哈希：`docs/build-artifact-hashes.txt`（2026-08-04 Debug；2026-08-06 审计复跑 build.ps1 全 9 项目 0 错误后重写）
 - 可启动服务端运行时：`Build/Server/publish/`（Release 发布版 + 用户提供的 EliteMir2 `Server_EN` 数据：`Server.MirDB` 版本 117 = Crystal `Version`，2338 张 `.map`、24 个 `Configs`、`Envir` 脚本，已验证正常启动）
-- 游戏画面/封包基线：**未录制**（见 `docs/backlog.md` 阻塞项）
+- 游戏画面/封包基线：**未录制**——验收路径已变更（golden 直解 + 真实服务器探针双断言），见 `docs/backlog.md` ③
+- **git 提交历史（2026-08-06 审计修复后）**：`e353a0b` G0 基线 → `a23ac9b` G0 基线文档 → `995a3ac` 全量快照（G0 后 B1→阶段6 全部工作入库，审计 P0 修复）→ `e7ffadf` 钓鱼补验（阶段6 10/11）→ `85b6eab` Build/ 验证脚本入库（审计 P1 修复）。后续任务须"每任务一 commit + 主会话验收"，不再积压工作区。
 
 ## 服务端网络现代化进度（B1）
 
