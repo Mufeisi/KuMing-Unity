@@ -73,6 +73,7 @@ namespace Crystal.Client.Rendering
         public static AtlasLibrary EnsureLib(string rel)
         {
             if (_libs.TryGetValue(rel, out var lib)) return lib;
+            if (string.IsNullOrEmpty(AtlasDir)) return null;
             string man = Path.Combine(AtlasDir, rel + ".json");
             if (!File.Exists(man))
             {
@@ -87,6 +88,7 @@ namespace Crystal.Client.Rendering
         public static AtlasLibrary EnsureMapLib(string rel)
         {
             if (_mapLibs.TryGetValue(rel, out var lib)) return lib;
+            if (string.IsNullOrEmpty(MapAtlasDir)) return null;
             string man = Path.Combine(MapAtlasDir, rel + ".json");
             if (!File.Exists(man))
             {
