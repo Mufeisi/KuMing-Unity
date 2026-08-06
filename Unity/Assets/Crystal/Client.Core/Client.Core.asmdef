@@ -1,0 +1,16 @@
+{
+    "name": "Crystal.Client.Core",
+    "rootNamespace": "",
+    "references": [
+        "Crystal.Shared.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

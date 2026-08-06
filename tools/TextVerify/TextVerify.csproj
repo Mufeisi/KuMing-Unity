@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- R8 GDI+ 文本栅格化探针：net8.0-windows 控制台，复刻 MirLabel.CreateTexture 文本语义。
+       System.Drawing 仅 Windows 可用 → TargetFramework 带 -windows + UseWindowsForms。
+       验证命令：dotnet run（项目 tools/TextVerify），exit 0 即文本位图尺寸/像素符合旧客户端语义。
+       产物：Build/TextVerify/text-*.png。 -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+{
+    "name": "Crystal.Client.Rendering",
+    "rootNamespace": "Crystal.Client.Rendering",
+    "references": [
+        "Crystal.Client.Assets",
+        "Crystal.Client.Core",
+        "Crystal.Shared.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- R7 粒子系统确定性验证探针：net8.0 控制台。
+       粒子状态机（Particle/ParticleEngine/FogParticle.cs）为纯 CPU 逻辑（CMain.Time 单调毫秒 + CMain.Random seed），
+       无需 Unity batchmode；源码 asmdef 编译 Client.Core 全量，与 CoreVerify 同构。
+       验证命令：dotnet run（项目 tools/ParticleVerify），exit 0 即状态机确定性验证通过。 -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\Unity\Assets\Crystal\Client.Core\**\*.cs" />
+  </ItemGroup>
+
+</Project>

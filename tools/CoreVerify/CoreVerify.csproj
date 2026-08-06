@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Crystal.Client.Core 编译验证工程：模拟 Unity asmdef 编译环境（netstandard2.1 + C# 10）。
+       ProjectReference Shared（netstandard2.1 target）+ 编译 Client.Core 全量源码。
+       验证命令：dotnet build tools/CoreVerify，exit 0 即 Client.Core 编译通过。 -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Unity\Assets\Crystal\Client.Core\**\*.cs" />
+  </ItemGroup>
+
+</Project>

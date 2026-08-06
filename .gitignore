@@ -364,3 +364,20 @@ FodyWeavers.xsd
 /Build
 /.idea/.idea.Legend of Mir/.idea
 /.idea/config
+
+# Unity 客户端工程（阶段 2+）
+/Unity/[Ll]ibrary/
+/Unity/[Tt]emp/
+/Unity/[Oo]bj/
+/Unity/[Ll]ogs/
+/Unity/[Uu]ser[Ss]ettings/
+/Unity/MemoryCaptures/
+/Unity/*.csproj
+/Unity/*.sln
+/Unity/Assets/Plugins/Shared/
+# Shared 源码同步副本（单一编译源：tools/sync-unity-shared.sh 幂等重建）
+/Unity/Assets/Crystal/Shared.Runtime/Shared/
+# KeyBindSettings 运行时落盘的键位文件（迭代包10 实证：Unity/KeyBinds.ini）
+/Unity/KeyBinds.ini
+# Reasonix 工具元数据（附件/桌面会话状态，非项目源码）
+/.reasonix/

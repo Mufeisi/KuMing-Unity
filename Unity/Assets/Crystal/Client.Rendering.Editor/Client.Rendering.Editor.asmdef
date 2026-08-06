@@ -1,0 +1,21 @@
+{
+    "name": "Crystal.Client.Rendering.Editor",
+    "rootNamespace": "Crystal.Rendering.Editor",
+    "references": [
+        "Crystal.Client.Rendering",
+        "Crystal.Client.Assets",
+        "Crystal.Client.Core",
+        "Crystal.Shared.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

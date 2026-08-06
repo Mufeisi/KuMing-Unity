@@ -197,6 +197,14 @@ namespace Server.MirEnvir
         public static long LastRunTime = 0;
         public int MonsterCount;
 
+        // 主循环 tick 耗时环形采样（供压测/诊断，不参与逻辑）
+        public readonly int[] TickLatency = new int[1024];
+        public int TickLatencyIndex;
+
+        // 每 tick 连接处理循环耗时采样（含 StatusConnections）
+        public readonly int[] ConnProcessLatency = new int[1024];
+        public int ConnProcessLatencyIndex;
+
         private long warTime, guildTime, conquestTime, rentalItemsTime, auctionTime, spawnTime, robotTime, timerTime;
         private int dailyTime = DateTime.UtcNow.Day;
         private bool MagicExists(Spell spell)
@@ -2069,6 +2077,7 @@ namespace Server.MirEnvir
 
                             AdjustLights();
 
+                            var connStart = Stopwatch.ElapsedMilliseconds;
                             lock (Connections)
                             {
                                 for (var i = Connections.Count - 1; i >= 0; i--)
@@ -2084,6 +2093,8 @@ namespace Server.MirEnvir
                                     StatusConnections[i].Process();
                                 }
                             }
+
+                            ConnProcessLatency[ConnProcessLatencyIndex++ & (ConnProcessLatency.Length - 1)] = (int)(Stopwatch.ElapsedMilliseconds - connStart);
                         }
 
 
@@ -2176,6 +2187,8 @@ namespace Server.MirEnvir
 
                         //   if (Players.Count == 0) Thread.Sleep(1);
                         //   GC.Collect();
+
+                        TickLatency[TickLatencyIndex++ & (TickLatency.Length - 1)] = (int)(Stopwatch.ElapsedMilliseconds - Time);
                     }
                 }
                 catch (Exception ex)
@@ -2554,13 +2567,7 @@ namespace Server.MirEnvir
 
             try
             {
-                using (var stream = File.Create(AccountPath + "n"))
-                    SaveAccounts(stream);
-                if (File.Exists(AccountPath))
-                    File.Move(AccountPath, AccountPath + "o");
-                File.Move(AccountPath + "n", AccountPath);
-                if (File.Exists(AccountPath + "o"))
-                    File.Delete(AccountPath + "o");
+                WriteAccountsFile(BuildAccountSnapshot(), backup: false);
             }
             catch (Exception ex)
             {
@@ -2568,47 +2575,103 @@ namespace Server.MirEnvir
             }
         }
 
-        private void SaveAccounts(Stream stream)
+        private void SaveAccounts(Stream stream, AccountSaveSnapshot snap)
         {
             using (var writer = new BinaryWriter(stream))
             {
                 writer.Write(Version);
                 writer.Write(CustomVersion);
-                writer.Write(NextAccountID);
-                writer.Write(NextCharacterID);
-                writer.Write(NextUserItemID);
-                writer.Write(NextHeroID);
+                writer.Write(snap.NextAccountID);
+                writer.Write(snap.NextCharacterID);
+                writer.Write(snap.NextUserItemID);
+                writer.Write(snap.NextHeroID);
 
-                writer.Write(GuildList.Count);
-                writer.Write(NextGuildID);
-                writer.Write(HeroList.Count);
-                for (var i = 0; i < HeroList.Count; i++)
-                    HeroList[i].Save(writer);
-                writer.Write(AccountList.Count);
-                for (var i = 0; i < AccountList.Count; i++)
-                    AccountList[i].Save(writer);
+                writer.Write(snap.Guilds.Length);
+                writer.Write(snap.NextGuildID);
+                writer.Write(snap.Heroes.Length);
+                for (var i = 0; i < snap.Heroes.Length; i++)
+                    snap.Heroes[i].Save(writer);
+                writer.Write(snap.Accounts.Length);
+                for (var i = 0; i < snap.Accounts.Length; i++)
+                    snap.Accounts[i].Save(writer);
 
-                writer.Write(NextAuctionID);
-                writer.Write(Auctions.Count);
-                foreach (var auction in Auctions)
+                writer.Write(snap.NextAuctionID);
+                writer.Write(snap.Auctions.Length);
+                foreach (var auction in snap.Auctions)
                     auction.Save(writer);
 
-                writer.Write(NextMailID);
+                writer.Write(snap.NextMailID);
 
-                writer.Write(GameshopLog.Count);
-                foreach (var item in GameshopLog)
+                writer.Write(snap.GameshopLog.Length);
+                foreach (var item in snap.GameshopLog)
                 {
                     writer.Write(item.Key);
                     writer.Write(item.Value);
                 }
 
-                writer.Write(SavedSpawns.Count);
-                foreach (var Spawn in SavedSpawns)
+                writer.Write(snap.SavedSpawns.Length);
+                foreach (var Spawn in snap.SavedSpawns)
                 {
                     var Save = new RespawnSave { RespawnIndex = Spawn.Info.RespawnIndex, NextSpawnTick = Spawn.NextSpawnTick, Spawned = Spawn.Count >= Spawn.Info.Count * SpawnMultiplier };
                     Save.Save(writer);
                 }
             }
+        }
+
+        private sealed class AccountSaveSnapshot
+        {
+            public AccountInfo[] Accounts;
+            public HeroInfo[] Heroes;
+            public GuildInfo[] Guilds;
+            public AuctionInfo[] Auctions;
+            public KeyValuePair<int, int>[] GameshopLog;
+            public MapRespawn[] SavedSpawns;
+            public int NextAccountID, NextCharacterID, NextGuildID, NextHeroID;
+            public ulong NextUserItemID, NextAuctionID, NextMailID;
+        }
+
+        // 主线程浅快照：只复制集合引用，序列化在后台线程进行，避免阻塞主循环
+        private AccountSaveSnapshot BuildAccountSnapshot()
+        {
+            return new AccountSaveSnapshot
+            {
+                Accounts = AccountList.ToArray(),
+                Heroes = HeroList.ToArray(),
+                Guilds = GuildList.ToArray(),
+                Auctions = Auctions.ToArray(),
+                GameshopLog = GameshopLog.ToArray(),
+                SavedSpawns = SavedSpawns.ToArray(),
+                NextAccountID = NextAccountID,
+                NextCharacterID = NextCharacterID,
+                NextGuildID = NextGuildID,
+                NextHeroID = NextHeroID,
+                NextUserItemID = NextUserItemID,
+                NextAuctionID = NextAuctionID,
+                NextMailID = NextMailID,
+            };
+        }
+
+        // 先写 .n 再交换，任一步失败当前文件都保持有效（比原实现先移备份更稳）
+        private void WriteAccountsFile(AccountSaveSnapshot snap, bool backup)
+        {
+            using (var stream = File.Create(AccountPath + "n"))
+                SaveAccounts(stream, snap);
+
+            if (backup && File.Exists(AccountPath))
+            {
+                if (!Directory.Exists(AccountsBackUpPath)) Directory.CreateDirectory(AccountsBackUpPath);
+                var fileName =
+                    $"Accounts {Now.Year:0000}-{Now.Month:00}-{Now.Day:00} {Now.Hour:00}-{Now.Minute:00}-{Now.Second:00}.bak";
+                var backupFile = Path.Combine(AccountsBackUpPath, fileName);
+                if (File.Exists(backupFile)) File.Delete(backupFile);
+                File.Move(AccountPath, backupFile);
+            }
+
+            if (File.Exists(AccountPath))
+                File.Move(AccountPath, AccountPath + "o");
+            File.Move(AccountPath + "n", AccountPath);
+            if (File.Exists(AccountPath + "o"))
+                File.Delete(AccountPath + "o");
         }
 
         private void SaveGuilds(bool forced = false)
@@ -2773,49 +2836,22 @@ namespace Server.MirEnvir
 
             Saving = true;
 
-
-            using (var mStream = new MemoryStream())
+            var snap = BuildAccountSnapshot();
+            Task.Run(() =>
             {
-                if (File.Exists(AccountPath))
+                try
                 {
-                    if (!Directory.Exists(AccountsBackUpPath)) Directory.CreateDirectory(AccountsBackUpPath);
-                    var fileName =
-                        $"Accounts {Now.Year:0000}-{Now.Month:00}-{Now.Day:00} {Now.Hour:00}-{Now.Minute:00}-{Now.Second:00}.bak";
-                    if (File.Exists(Path.Combine(AccountsBackUpPath, fileName))) File.Delete(Path.Combine(AccountsBackUpPath, fileName));
-                    File.Move(AccountPath, Path.Combine(AccountsBackUpPath, fileName));
+                    WriteAccountsFile(snap, backup: true);
                 }
-
-                SaveAccounts(mStream);
-                var fStream = new FileStream(AccountPath + "n", FileMode.Create);
-
-                var data = mStream.ToArray();
-                fStream.BeginWrite(data, 0, data.Length, EndSaveAccounts, fStream);
-            }
-        }
-
-        private void EndSaveAccounts(IAsyncResult result)
-        {
-            var fStream = result.AsyncState as FileStream;
-            try
-            {
-                if (fStream != null)
+                catch (Exception ex)
                 {
-                    var oldfilename = fStream.Name.Substring(0, fStream.Name.Length - 1);
-                    var newfilename = fStream.Name;
-                    fStream.EndWrite(result);
-                    fStream.Dispose();
-                    if (File.Exists(oldfilename))
-                        File.Move(oldfilename, oldfilename + "o");
-                    File.Move(newfilename, oldfilename);
-                    if (File.Exists(oldfilename + "o"))
-                        File.Delete(oldfilename + "o");
+                    MessageQueue.Enqueue(ex);
                 }
-            }
-            catch (Exception)
-            {
-            }
-
-            Saving = false;
+                finally
+                {
+                    Saving = false;
+                }
+            });
         }
 
         public bool LoadDB()

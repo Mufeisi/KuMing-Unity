@@ -56,27 +56,34 @@ namespace Server.MirNetwork
             }
         }
 
+        private SocketAsyncEventArgs _sendArgs;
+
         private void BeginSend(byte[] data)
         {
             if (!Connected || data.Length == 0) return;
 
             try
             {
-                _client.Client.BeginSend(data, 0, data.Length, SocketFlags.None, SendData, null);
+                if (_sendArgs == null)
+                {
+                    _sendArgs = new SocketAsyncEventArgs();
+                    _sendArgs.Completed += SendData;
+                }
+
+                _sendArgs.SetBuffer(data, 0, data.Length);
+
+                if (!_client.Client.SendAsync(_sendArgs))
+                    SendData(this, _sendArgs);
             }
             catch
             {
                 Disconnecting = true;
             }
         }
-        private void SendData(IAsyncResult result)
+        private void SendData(object sender, SocketAsyncEventArgs e)
         {
-            try
-            {
-                _client.Client.EndSend(result);
-            }
-            catch
-            { }
+            if (e.SocketError != SocketError.Success)
+                Disconnecting = true;
         }
 
         public void Process()

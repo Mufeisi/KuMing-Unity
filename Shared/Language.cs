@@ -4106,7 +4106,7 @@ public static class GameLanguage
 
     //Add enumeration types that require localization here
     private static Type[] localizationEnumTypes =
-    [
+    {
         typeof(MirClass),
         typeof(RequiredClass),
         typeof(Stat),
@@ -4115,7 +4115,7 @@ public static class GameLanguage
         typeof(AwakeType),
         typeof(MonsterType),
         typeof(HeroBehaviour)
-    ];
+    };
 
     static GameLanguage()
     {
@@ -4151,19 +4151,23 @@ public static class GameLanguage
         try
         {
             var language = JsonSerializer.Deserialize<TextMap>(File.ReadAllText(languageJsonPath), CustomJsonSerializerOptions);
-            foreach (var item in ClientTextMap.Text)
+            // 移植坑（.NET Core 3.0+ 行为变更）：枚举 ClientTextMap.Text 时经索引器写入
+            // 会抛 InvalidOperationException（Collection was modified），被下方 catch 吞掉
+            // 导致语言包静默不生效。改为枚举 language（未被修改的 JSON 字典）→ 写入
+            // ClientTextMap（未被枚举），语义不变：仅拷入目标已存在的键。
+            foreach (var item in language.Text)
             {
-                if (language.Text.TryGetValue(item.Key, out var value))
+                if (ClientTextMap.Text.ContainsKey(item.Key))
                 {
-                    ClientTextMap.Text[item.Key] = value;
+                    ClientTextMap.Text[item.Key] = item.Value;
                 }
             }
 
-            foreach (var item in ClientTextMap.Enum)
+            foreach (var item in language.Enum)
             {
-                if (language.Enum.TryGetValue(item.Key, out var value))
+                if (ClientTextMap.Enum.ContainsKey(item.Key))
                 {
-                    ClientTextMap.Enum[item.Key] = value;
+                    ClientTextMap.Enum[item.Key] = item.Value;
                 }
             }
 
@@ -4197,19 +4201,20 @@ public static class GameLanguage
         try
         {
             var language = JsonSerializer.Deserialize<TextMap>(File.ReadAllText(languageJsonPath), CustomJsonSerializerOptions);
-            foreach (var item in ServerTextMap.Text)
+            // 同 LoadClientLanguage 移植坑：枚举时写入抛异常被吞，静默不生效。枚举 language → 写 ServerTextMap。
+            foreach (var item in language.Text)
             {
-                if (language.Text.TryGetValue(item.Key, out var value))
+                if (ServerTextMap.Text.ContainsKey(item.Key))
                 {
-                    ServerTextMap.Text[item.Key] = value;
+                    ServerTextMap.Text[item.Key] = item.Value;
                 }
             }
 
-            foreach (var item in ServerTextMap.Enum)
+            foreach (var item in language.Enum)
             {
-                if (language.Enum.TryGetValue(item.Key, out var value))
+                if (ServerTextMap.Enum.ContainsKey(item.Key))
                 {
-                    ServerTextMap.Enum[item.Key] = value;
+                    ServerTextMap.Enum[item.Key] = item.Value;
                 }
             }
 

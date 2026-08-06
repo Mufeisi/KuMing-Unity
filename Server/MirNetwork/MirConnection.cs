@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using Server.MirDatabase;
 using Server.MirEnvir;
@@ -52,6 +53,15 @@ namespace Server.MirNetwork
         byte[] _rawData = new byte[0];
         byte[] _rawBytes = new byte[8 * 1024];
 
+        private SocketAsyncEventArgs _receiveArgs;
+        private byte[] _recvBuffer;
+
+        private SocketAsyncEventArgs _sendArgs;
+        private byte[] _sendBuffer;
+        private int _sendOffset, _sendCount;
+        private bool _sending;
+        private const int MaxSendBuffer = 256 * 1024;
+
         public AccountInfo Account;
         public PlayerObject Player;
 
@@ -74,13 +84,18 @@ namespace Server.MirNetwork
         private DateTime _dataCounterReset;
         private int _dataCounter;
         private FixedSizedQueue<Packet> _lastPackets;
+        private const int MaxPacketsPerTick = 10;
 
         public MirConnection(int sessionID, TcpClient client)
         {
             SessionID = sessionID;
             IPAddress = client.Client.RemoteEndPoint.ToString().Split(':')[0];
 
-            Envir.UpdateIPBlock(IPAddress, TimeSpan.FromSeconds(Settings.IPBlockSeconds));
+            // IPBlockSeconds<=0 表示禁用反滥用：此时 UpdateIPBlock(ip, 0) 会因 Envir.Time 仅在
+            // workloop tick 刷新而在同一 tick 内产出 banDate == Now 的"残留封禁"，导致同 IP 并发连接全被拒绝。
+            // 仅当 >0 时才登记封禁（生产默认 5s 行为不变）。
+            if (Settings.IPBlockSeconds > 0)
+                Envir.UpdateIPBlock(IPAddress, TimeSpan.FromSeconds(Settings.IPBlockSeconds));
 
             MessageQueue.Enqueue(GameLanguage.ServerTextMap.GetLocalization((ServerTextKeys.IPAddressConnected), IPAddress));
 
@@ -118,35 +133,46 @@ namespace Server.MirNetwork
 
             try
             {
-                _client.Client.BeginReceive(_rawBytes, 0, _rawBytes.Length, SocketFlags.None, ReceiveData, _rawBytes);
+                if (_receiveArgs == null)
+                {
+                    _receiveArgs = new SocketAsyncEventArgs();
+                    _receiveArgs.Completed += ReceiveCompleted;
+                }
+
+                _recvBuffer = ArrayPool<byte>.Shared.Rent(_rawBytes.Length);
+                _receiveArgs.SetBuffer(_recvBuffer, 0, _recvBuffer.Length);
+
+                if (!_client.Client.ReceiveAsync(_receiveArgs))
+                    // completed synchronously; keep the frame parse off the calling thread
+                    ThreadPool.QueueUserWorkItem(_ => ReceiveCompleted(_receiveArgs));
             }
             catch
             {
+                ReturnRecvBuffer();
                 Disconnecting = true;
             }
         }
 
-        private void ReceiveData(IAsyncResult result)
+        private void ReceiveCompleted(object sender, SocketAsyncEventArgs e)
         {
-            if (!Connected) return;
-
-            int dataRead;
-
-            try
+            ReceiveCompleted(e);
+        }
+        private void ReceiveCompleted(SocketAsyncEventArgs e)
+        {
+            if (!Connected)
             {
-                dataRead = _client.Client.EndReceive(result);
+                ReturnRecvBuffer();
+                return;
             }
-            catch
+
+            if (e.SocketError != SocketError.Success || e.BytesTransferred <= 0)
             {
+                ReturnRecvBuffer();
                 Disconnecting = true;
                 return;
             }
 
-            if (dataRead == 0)
-            {
-                Disconnecting = true;
-                return;
-            }
+            int dataRead = e.BytesTransferred;
 
             if (_dataCounterReset < Envir.Now)
             {
@@ -158,12 +184,10 @@ namespace Server.MirNetwork
 
             try
             {
-                byte[] rawBytes = result.AsyncState as byte[];
-
                 byte[] temp = _rawData;
                 _rawData = new byte[dataRead + temp.Length];
                 Buffer.BlockCopy(temp, 0, _rawData, 0, temp.Length);
-                Buffer.BlockCopy(rawBytes, 0, _rawData, temp.Length, dataRead);
+                Buffer.BlockCopy(_recvBuffer, 0, _rawData, temp.Length, dataRead);
 
                 Packet p;
 
@@ -172,6 +196,7 @@ namespace Server.MirNetwork
             }
             catch
             {
+                ReturnRecvBuffer();
                 Envir.UpdateIPBlock(IPAddress, TimeSpan.FromHours(24));
 
                 MessageQueue.Enqueue(GameLanguage.ServerTextMap.GetLocalization((ServerTextKeys.IPAddressDisconnectedInvalidPacket), IPAddress));
@@ -179,6 +204,8 @@ namespace Server.MirNetwork
                 Disconnecting = true;
                 return;
             }
+
+            ReturnRecvBuffer();
 
             if (_dataCounter > Settings.MaxPacket)
             {
@@ -203,29 +230,92 @@ namespace Server.MirNetwork
 
             BeginReceive();
         }
-        private void BeginSend(List<byte> data)
-        {
-            if (!Connected || data.Count == 0) return;
 
-            //Interlocked.Add(ref Network.Sent, data.Count);
+        private void ReturnRecvBuffer()
+        {
+            if (_recvBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(_recvBuffer);
+                _recvBuffer = null;
+            }
+        }
+        private void StartSend()
+        {
+            if (!Connected)
+            {
+                _sending = false;
+                ReturnSendBuffer();
+                return;
+            }
 
             try
             {
-                _client.Client.BeginSend(data.ToArray(), 0, data.Count, SocketFlags.None, SendData, Disconnecting);
+                if (_sendArgs == null)
+                {
+                    _sendArgs = new SocketAsyncEventArgs();
+                    _sendArgs.Completed += SendCompleted;
+                }
+
+                _sendArgs.SetBuffer(_sendBuffer, _sendOffset, _sendCount);
+
+                if (!_client.Client.SendAsync(_sendArgs))
+                    // completed synchronously; keep the completion off the calling thread
+                    ThreadPool.QueueUserWorkItem(_ => SendCompleted(_sendArgs));
             }
             catch
             {
+                _sending = false;
+                ReturnSendBuffer();
                 Disconnecting = true;
             }
         }
-        private void SendData(IAsyncResult result)
+        private void SendCompleted(object sender, SocketAsyncEventArgs e)
         {
-            try
+            SendCompleted(e);
+        }
+        private void SendCompleted(SocketAsyncEventArgs e)
+        {
+            if (!Connected || e.SocketError != SocketError.Success)
             {
-                _client.Client.EndSend(result);
+                _sending = false;
+                ReturnSendBuffer();
+                if (Connected && e.SocketError != SocketError.Success)
+                    Disconnecting = true;
+                return;
             }
-            catch
-            { }
+
+            _sendOffset += e.BytesTransferred;
+            _sendCount -= e.BytesTransferred;
+
+            if (_sendCount > 0)
+            {
+                // partial send: retry the remainder
+                StartSend();
+                return;
+            }
+
+            _sending = false;
+            ReturnSendBuffer();
+        }
+        private void EnsureSendBuffer(int size)
+        {
+            if (_sendBuffer != null && _sendBuffer.Length >= size) return;
+
+            var newBuf = ArrayPool<byte>.Shared.Rent(size);
+            if (_sendCount > 0)
+                Buffer.BlockCopy(_sendBuffer, _sendOffset, newBuf, 0, _sendCount);
+
+            ReturnSendBuffer();
+            _sendBuffer = newBuf;
+            _sendOffset = 0;
+        }
+        private void ReturnSendBuffer()
+        {
+            if (_sendBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(_sendBuffer);
+                _sendBuffer = null;
+            }
         }
         
         public void Enqueue(Packet p)
@@ -247,10 +337,11 @@ namespace Server.MirNetwork
                 return;
             }
 
-            while (!_receiveList.IsEmpty && !Disconnecting)
+            // per-tick budget: bound main-loop work per connection, fairness across 2000 conns
+            for (var i = 0; i < MaxPacketsPerTick && !_receiveList.IsEmpty && !Disconnecting; i++)
             {
                 Packet p;
-                if (!_receiveList.TryDequeue(out p)) continue;
+                if (!_receiveList.TryDequeue(out p)) break;
 
                 _lastPackets.Enqueue(p);
 
@@ -272,16 +363,43 @@ namespace Server.MirNetwork
 
             if (_sendList == null || _sendList.Count <= 0) return;
 
-            List<byte> data = new List<byte>();
+            FlushSend();
+        }
+        private void FlushSend()
+        {
+            if (_sendList == null || _sendList.Count <= 0) return;
 
-            while (!_sendList.IsEmpty)
+            if (_sending) return;
+
+            int total = 0;
+            var queued = new List<byte[]>(_sendList.Count);
+            while (_sendList.TryDequeue(out var p))
             {
-                Packet p;
-                if (!_sendList.TryDequeue(out p) || p == null) continue;
-                data.AddRange(p.GetPacketBytes());
+                if (p == null) continue;
+                var bytes = p.GetPacketBytes() as byte[] ?? p.GetPacketBytes().ToArray();
+                queued.Add(bytes);
+                total += bytes.Length;
+            }
+            if (total == 0) return;
+
+            if (_sendCount + total > MaxSendBuffer)
+            {
+                // client not draining fast enough: drop the connection rather than unbounded buffering
+                Disconnect(20);
+                return;
             }
 
-            BeginSend(data);
+            EnsureSendBuffer(_sendCount + total);
+            int offset = _sendOffset + _sendCount;
+            foreach (var bytes in queued)
+            {
+                Buffer.BlockCopy(bytes, 0, _sendBuffer, offset, bytes.Length);
+                offset += bytes.Length;
+            }
+            _sendCount += total;
+
+            _sending = true;
+            StartSend();
         }
         private void ProcessPacket(Packet p)
         {
@@ -814,14 +932,12 @@ namespace Server.MirNetwork
                 SoftDisconnect(reason);
                 return;
             }
-            
+
             Disconnecting = true;
 
-            List<byte> data = new List<byte>();
-
-            data.AddRange(new S.Disconnect { Reason = reason }.GetPacketBytes());
-
-            BeginSend(data);
+            if (_sendList != null)
+                _sendList.Enqueue(new S.Disconnect { Reason = reason });
+            FlushSend();
             SoftDisconnect(reason);
         }
         public void CleanObservers()
@@ -854,11 +970,9 @@ namespace Server.MirNetwork
                 {
                     Disconnecting = true;
 
-                    List<byte> data = new List<byte>();
-
-                    data.AddRange(new S.ClientVersion { Result = 0 }.GetPacketBytes());
-
-                    BeginSend(data);
+                    if (_sendList != null)
+                        _sendList.Enqueue(new S.ClientVersion { Result = 0 });
+                    FlushSend();
                     SoftDisconnect(10);
                     MessageQueue.Enqueue(GameLanguage.ServerTextMap.GetLocalization((ServerTextKeys.PlayerDisconnectedWrongClientVersion), SessionID));
                     return;
