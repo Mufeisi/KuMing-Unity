@@ -27,7 +27,7 @@
 - [x] 任务 + 大地图 + 小地图 — 🟩 迭代包5（`net-quest.ps1` 两遍：Quest 四窗 + BigMap/MiniMap）
 - [x] 组队/好友/行会 — 🟩 迭代包6（`net-team.ps1` 两遍）
 - [x] 交易/邮件/拍卖/商城 — 🟩 迭代包7（`net-market.ps1` 四遍）+ 迭代包9 商城（`net-shop.ps1`）
-- [ ] 英雄/宠物/钓鱼等扩展 — 🟨 英雄/坐骑 🟩（迭代包8 `net-hero.ps1` 五遍）；钓鱼 🟨（`FishingDialog`/`FishingStatusDialog` 已逐字移植 + 真实 `MirAnimatedButton`，编译通过；探针未覆盖，需服务器钓鱼数据流补验）
+- [x] 英雄/宠物/钓鱼等扩展 — 🟨 英雄/坐骑 🟩（迭代包8 `net-hero.ps1` 五遍）；钓鱼 🟩（阶段6 补验 `net-fishing.ps1`→`NetProbe` `fishing` 子模式：`@LEVEL 20`→`@make BlueFishingRod`→`C.EquipItem`→`S.EquipItem{Success=true}`→`HasFishingRod`→`S.FishingUpdate` 回放→真实 FishingDialog+FishingStatusDialog 渲染，数据+像素双断言全过，产物 `Unity/Build/net-fishing.png`）
 - [x] 设置 + 键位重绑定 + 手感可调项 — 🟩 迭代包10（ChatOption 筛选/透明 + HelpDialog + KeyboardLayout 键位 `CheckNewInput` 重绑定，`net-settings.ps1`）
 - [ ] 昼夜/灯光/天气/特效 — 🟨 灯光 🟩（R5 `LightRender`）+ 特效 🟩（Effect 9 类移植 + R1 渲染）；天气 🟥 阻塞（`Libraries.Weather` 素材在数据源与编译产物均缺失，R7，见 `docs/backlog.md`）
 
@@ -54,4 +54,4 @@
 | 所有 P0/P1 缺陷关闭 | ✅ | 无 P0/P1 阻断缺陷；中文语言包（迭代包11）为范围外增强推迟 |
 | 不再需要 SlimDX 运行路径 | ✅ | Unity/Server 侧零 SlimDX 引用（`Client.Core` 内仅注释「去 SlimDX/纯 C# 等价物」） |
 
-**✅ Gate G5：通过（有条件）**——10 迭代包 PC 功能面全过 + 无 SlimDX 依赖。**阶段6 边缘补验已执行**（`net-edge.ps1` 7 子模式全 PASS：del/run/split/revive/recon/autopath/magic，上表对应项转 🟩）；钓鱼窗口已移植（任务 #9，编译通过）待真机补验；剩余：天气（R7 素材阻塞，见 `docs/backlog.md`）。
+**✅ Gate G5：通过（有条件）**——10 迭代包 PC 功能面全过 + 无 SlimDX 依赖。**阶段6 边缘补验已执行**（`net-edge.ps1` 7 子模式全 PASS：del/run/split/revive/recon/autopath/magic + `net-fishing.ps1` 钓鱼 PASS，上表对应项转 🟩，10/11 项完成）；剩余：天气（R7 素材阻塞，见 `docs/backlog.md`）。

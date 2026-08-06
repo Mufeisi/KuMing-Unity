@@ -48,7 +48,7 @@
 
 **Gate G5 判定（2026-08-06 主会话，✅ 通过-有条件）**：阶段5 收官。①**PC 兼容矩阵（迭代包）100%**——迭代包 1-10 全 🟩，探针断言全 PASS（`docs/compat-matrix.md` 同步更新为真实状态：基础/窗口清单按 P4-M1..M5 + 迭代包覆盖度标记 🟩/🟨）；②**无 P0/P1 阻断缺陷**——中文语言包（迭代包11）为范围外增强推迟，不计阻断；③**不再需要 SlimDX 运行路径**——Unity/Server 侧零 SlimDX 引用（`Client.Core` 内 SlimDX 仅注释「去 SlimDX/纯 C# 等价物」，无实际代码依赖）。**转阶段6 补验清单**（🟨 边缘项，均为代码已逐字移植、探针未覆盖，非功能缺失）：删除角色 / 地图切换 / 断线重连 / 寻路 / 奔跑 / AutoRun / 技能施放 / 复活 / 物品拖拽拆分 / 钓鱼窗口 / 天气（R7 素材阻塞）。
 
-**阶段6 边缘补验（2026-08-06 主会话，9/11 项 PASS）**：新增 `Build/net-edge.ps1` 编排 + `NetProbe.Mode.Edge` 7 子模式探针（`Unity/Assets/Crystal/Client.Rendering.Editor/NetProbe.cs`），真实服务器 + Unity batchmode，`[netprobe] edge ok` 断言。**全 7 子模式 PASS（exit 0）**：
+**阶段6 边缘补验（2026-08-06 主会话，10/11 项 PASS）**：新增 `Build/net-edge.ps1` 编排 + `NetProbe.Mode.Edge` 7 子模式探针（`Unity/Assets/Crystal/Client.Rendering.Editor/NetProbe.cs`），真实服务器 + Unity batchmode，`[netprobe] edge ok` 断言。**全 7 子模式 PASS（exit 0）** + **钓鱼窗口 PASS（`net-fishing.ps1`，见下方第 10 项）**：
 - **del**（删除角色）：`C.DeleteCharacter` 软删 → 重连 `DelPersisted:0` 验证角色不存在（角色名全局保留 → 用唯一账号/角色名）
 - **run**（奔跑）：`C.Walk` 一步（服务器 `_stepCounter++`/`ActionTime=+600`）→ `C.Run` 两步 `RunGo ok=True`（失败根因=服务端阻塞对象客户端未预知 → `RunWalk` 阶段 `EmptyCell` 重验 + 换方向重走最多 3 次）
 - **split**（物品拖拽拆分）：`@make {idx} 2` 造栈（fresh 角色起始物均 Count=1 无现成栈）→ `S.GainedItem{Count=2}` 确认可叠放 → `C.SplitItem` → `S.SplitItem1{Success=true}`
@@ -57,7 +57,7 @@
 - **autopath**（寻路 + AutoRun）：`PathFinder` 11 节点路径逐节点 `C.Walk` → `AutoPathArrive ok=True`（防御：连续 5 次未推进视为服务器侧未知阻塞 → 该格打阻塞位重寻路绕行）
 - **magic**（技能施放）：`@giveskill` → `S.NewMagic`/`S.MagicLeveled` → `C.Magic` → `S.Magic{Cast=true}`。**施放法术由 Lightning 改 Haste**：Lightning 需 45 MP（BaseCost 38+LevelCost 7），fresh level-1 Warrior 仅 11 MP → 服务器 `cost>MP` 早退不发 S.Magic（MagicCast 超时）；Haste 仅 5 MP 且无目标/道具依赖，Cast=true。
 
-其余：**钓鱼窗口**（`FishingDialog`/`FishingStatusDialog` 已逐字移植，任务 #9，Unity batchmode 编译通过无 CS 错误）——`Dialogs/FishingDialog.cs` 渔具 5 槽 + `MirAnimatedButton` 动画施放按钮（真实控件替换 seam，`MirAnimatedControl` 复用动画逻辑 + Hover/Pressed/Disabled Index 态）；仍属 🟨（探针未覆盖，需服务器钓鱼数据流 `@make` 鱼竿 + `S.FishingUpdate` 才可录证据）；**天气**（R7 素材阻塞）已登记 `docs/backlog.md`。`Setup.ini` TestServer 翻转已恢复（备份一致），无 Unity/Server 进程残留。
+其余：**钓鱼窗口（阶段6 补验第 10 项，2026-08-06 完成）**：`net-fishing.ps1`（`FishingDialog`/`FishingStatusDialog` 真实控制树 + 渔具 5 槽 + `MirAnimatedButton` 动画施放按钮 + `S.FishingUpdate` 封包回放 Ported `PlayerObject.FishingUpdate` 状态链）→ **PASS exit 0（`edge ok`）**，产物 `Unity/Build/net-fishing.png`。链路：`@LEVEL 20`（见坑②）→ `@make BlueFishingRod`（`S.NewItemInfo:794` 真实 DB ItemInfo：type=Weapon shape=49 reqClass=None）→ `S.GainedItem` → `C.EquipItem{Weapon}` → `S.EquipItem{Success=true}` → `HasFishingRod:True` → `S.FishingUpdate` 回放（`Fishing:True / FoundFish:True`）→ 渲染断言全过（fishFrame=56721/rodPx=14400/statusFrame=24297/chance=1794/progress=1094/fishBtn=2126/TitlePx=23）。**三个踩坑（修复）**：①`net-fishing.ps1` 为 UTF-8 无 BOM + 中文注释 → PowerShell 5.1 按 ANSI 解码致 ParserError（其余 net-*.ps1 均 ASCII 注释无此问题）→ 转 UTF-8 BOM；②`BlueFishingRod` `reqType=Level reqAmt=20` → fresh level-1 角色 `CanEquipItem` 拒绝（`equip-rejected`）→ 探针先 `@LEVEL 20` 再 `@make`（服务器串行处理 Chat 无竞态）；③`MirItemCell.ItemArray` 缺 `MirGridType.Fishing` case → 渲染 `NotImplementedException` → 补 `MapObject.User.Equipment[(int)EquipmentSlot.Weapon]?.Slots`（旧客户端 MirItemCell.cs:84 逐字语义：渔具槽=鱼竿子物品）+ `RunEdge()` 补 `_outPath/_rtW/_rtH` 初始化（fishing 渲染 RT 用）。回归：`net-shop.ps1`（MirItemCell Socket 路径相邻改动）PASS + `tools/CoreVerify` 0 错误。**天气**（R7 素材阻塞）已登记 `docs/backlog.md`。`Setup.ini` TestServer 翻转已恢复（备份一致），无 Unity/Server 进程残留。
 
 ## 已确立的模式 / 决策（ADR 摘要）
 

@@ -218,6 +218,10 @@ namespace Crystal.Rendering.Editor
             _mapDir = GetEnv("CRYSTAL_MAP_DIR", "Build/Server/publish/Maps");
             _atlasDir = GetEnv("CRYSTAL_ATLAS_DIR", "Build/assetcompile/all");
             _mapName = GetEnv("CRYSTAL_MAP", "nn0.Map");
+            // fishing 子模式 RenderFishing 渲染 RT 须初始化（否则 _rtW/_rtH=0 → GetTemporary 抛异常）。
+            _outPath = GetEnv("CRYSTAL_OUT", "Build/net-fishing.png");
+            _rtW = GetInt("CRYSTAL_RT_W", 1024);
+            _rtH = GetInt("CRYSTAL_RT_H", 768);
             Run(Mode.Edge);
         }
 
@@ -1010,6 +1014,7 @@ namespace Crystal.Rendering.Editor
                         GameScene.ItemInfoList.Add(nii.Info);
                         if (nii.Info.IsFishingRod) _fishRodInfo = nii.Info;
                         _seq.Add($"NewItemInfo:{nii.Info.Index}:{nii.Info.Name}:shape={nii.Info.Shape}");
+                        Console.WriteLine($"[netprobe] edge fishing iteminfo idx={nii.Info.Index} name={nii.Info.Name} type={nii.Info.Type} shape={nii.Info.Shape} reqClass={nii.Info.RequiredClass} reqType={nii.Info.RequiredType} reqAmt={nii.Info.RequiredAmount} weight={nii.Info.Weight}");
                     }
                     break;
                 case (short)ServerPacketIds.EquipItem:
@@ -4813,10 +4818,15 @@ namespace Crystal.Rendering.Editor
                     Network.Enqueue(new C.Chat { Message = $"@giveskill {_edgeSpell} 1" });
                     break;
                 case "fishing":
+                    // BlueFishingRod（idx=794）reqType=Level reqAmt=20（实证：type=Weapon shape=49 reqClass=None）
+                    // → fresh level-1 角色 CanEquipItem 拒绝（equip-rejected）。先 @LEVEL 20 再 @make；
+                    // 服务器串行处理 Chat，@make 后 C.EquipItem 时 Level 已达标，无竞态。
                     _estep = EdgeStep.FishMake;
                     _estepDeadline = CMain.Time + 20000;
+                    _seq.Add("SendLevel20");
                     _seq.Add("SendMake");
-                    Console.WriteLine("[netprobe] edge fishing @make BlueFishingRod");
+                    Console.WriteLine("[netprobe] edge fishing @LEVEL 20 then @make BlueFishingRod");
+                    Network.Enqueue(new C.Chat { Message = "@LEVEL 20" });
                     Network.Enqueue(new C.Chat { Message = "@make BlueFishingRod" });
                     break;
                 case "autopath":

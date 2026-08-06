@@ -65,6 +65,10 @@ namespace Client.MirControls
                         return MailComposeParcelDialog.Items;
                     case MirGridType.Mount:
                         return MapObject.User.Equipment[(int)EquipmentSlot.Mount].Slots;
+                    case MirGridType.Fishing:
+                        // 渔具槽 = 武器（鱼竿）的 Slots（旧客户端 MirItemCell.cs:84 逐字语义；
+                        // 鱼竿 UserItem.Slots 存 Hook/Float/Bait/Finder/Reel 五件子物品）。
+                        return MapObject.User.Equipment[(int)EquipmentSlot.Weapon]?.Slots;
                     case MirGridType.HeroEquipment:
                         return MapObject.Hero.Equipment;
                     case MirGridType.HeroInventory:
