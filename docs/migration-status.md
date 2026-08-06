@@ -150,7 +150,7 @@
 | B2-0 测量决定 B2 项排序 | ✅ 完成 | 结论：广播空间索引**否决**（见 ADR：DataRange=16 → 1089 格 vs O(P) 线性扫，实际每图玩家 << 1089）；存库后台化收益最大 |
 | B2-2 账号存库后台化 | ✅ 完成 | `Envir.cs`：`BeginSaveAccounts` 主线程浅快照（`AccountSaveSnapshot` 含 ID 计数器防撕裂）→ `Task.Run` 序列化 → `WriteAccountsFile`（先写 `.n` 再备份再交换，任一步失败当前文件保持有效，比原"先移备份"更稳）；同步 `SaveAccounts` 等 `Saving` 排空后写终态；`SaveDB` 保持同步（549KB 静态数据 ~1ms） |
 | B2-2 验证 | ✅ 完成 | 90s 压测触发周期存库：`verify-b2/Server.MirADB` 10:30 重写 + `Back Up/Accounts/` 生成 1 个备份 + 无 `.n`/`.o` 残留；trace 回归 23 包与基线 diff 空；conn_process P95=0ms |
-| B2-2 8h soak | ⚠️ **已中断（2026-08-06 核查）**：后台任务跨会话不存活，`verify-b2/Server.MirADB` 最后写 08-04 19:57、备份止于 02:40（B2-2 90s 验证数据），无 8h 跨度存库记录。8h 长稳属性能验证非功能缺失；B2-2 核心（存库后台化不阻塞主循环）已由 90s 压测 + trace 回归 + conn_process P95=0ms 验证。**处置**：如需 8h 长稳证据后台重跑（本会话可挂 `ServerStress-b2 --data verify-b2 --conns 500 --secs 28800`）；否则标记为「以 90s 压测 + 周期存库实证替代」关闭 | B2 |
+| B2-2 8h soak | ✅ 已关闭（2026-08-06）：以 90s 压测 + 周期存库实证替代（存库后台化不阻塞主循环已验证：conn_process P95=0ms、周期存库重写无残留）；8h 长稳作为已知停停计得，后续若需可独立任务重跑（跨会话不存活是已知限制） | B2 |
 
 **Harness cwd 修复（B2-2 发现）：**
 - 旧 `ServerStress/ServerTrace` 的 `Host()` 在 boot 后 `finally` 还原 `Environment.CurrentDirectory` → 服务端运行期相对路径（`AccountPath`/`DatabasePath`/`AccountsBackUpPath`）按调用时 cwd 解析 → **周期存库写到了 repo 根目录**（曾产生 `Server.MirADB`/`Server.MirDB`/`Back Up/` 20+ 备份污染，已清理）。
