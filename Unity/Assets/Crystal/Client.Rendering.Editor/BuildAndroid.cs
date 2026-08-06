@@ -3,6 +3,8 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Crystal.Client.Rendering;
 
 namespace Crystal.Rendering.Editor
 {
@@ -26,17 +28,19 @@ namespace Crystal.Rendering.Editor
                 PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, BundleId);
                 PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26; // Unity 6000.5 最低 API 26（Android 8.0）
                 PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-                Console.WriteLine($"[build-android] player-settings company=Mir2 product=Crystal bundle={BundleId} minSdk=26");
+                // 屏幕方向：传奇为横屏游戏，骨架期默认 LandscapeLeft（PRD 阶段7 第 2 项；横竖屏策略决策项见 PRD 行 977，后续可切）。
+                PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+                Console.WriteLine($"[build-android] player-settings company=Mir2 product=Crystal bundle={BundleId} minSdk=26 dir=LandscapeLeft");
 
-                // 2. 最小启动场景（不存在则创建空场景）。
+                // 2. 最小启动场景：幂等——不存在则新建空场景，存在则打开；确保挂载 AppLifecycle（Android 生命周期骨架）。
                 string sceneAbs = Path.GetFullPath(ScenePath);
-                if (!File.Exists(sceneAbs))
-                {
-                    var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-                    Directory.CreateDirectory(Path.GetDirectoryName(sceneAbs));
-                    EditorSceneManager.SaveScene(scene, sceneAbs);
-                    Console.WriteLine($"[build-android] created scene {ScenePath}");
-                }
+                var scene = File.Exists(sceneAbs)
+                    ? EditorSceneManager.OpenScene(sceneAbs, OpenSceneMode.Single)
+                    : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                if (!File.Exists(sceneAbs)) Directory.CreateDirectory(Path.GetDirectoryName(sceneAbs));
+                EnsureAppLifecycle(scene);
+                EditorSceneManager.SaveScene(scene, sceneAbs);
+                Console.WriteLine($"[build-android] scene {ScenePath} appLifecycle=true");
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
 
                 // 3. 切 Android 目标并构建。
@@ -61,6 +65,15 @@ namespace Crystal.Rendering.Editor
                 Console.WriteLine($"[build-android] exception {ex}");
                 EditorApplication.Exit(1);
             }
+        }
+
+        // 幂等挂载 AppLifecycle：场景根节点已含该组件则跳过，否则新建 GameObject 挂载。
+        static void EnsureAppLifecycle(Scene scene)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.GetComponent<AppLifecycle>() != null) return;
+            var go = new GameObject("AppLifecycle");
+            go.AddComponent<AppLifecycle>();
         }
     }
 }
