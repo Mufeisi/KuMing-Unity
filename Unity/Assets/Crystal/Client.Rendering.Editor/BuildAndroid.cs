@@ -39,8 +39,9 @@ namespace Crystal.Rendering.Editor
                     : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 if (!File.Exists(sceneAbs)) Directory.CreateDirectory(Path.GetDirectoryName(sceneAbs));
                 EnsureAppLifecycle(scene);
+                EnsureTouchInput(scene);
                 EditorSceneManager.SaveScene(scene, sceneAbs);
-                Console.WriteLine($"[build-android] scene {ScenePath} appLifecycle=true");
+                Console.WriteLine($"[build-android] scene {ScenePath} appLifecycle=true touchInput=true");
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
 
                 // 3. 切 Android 目标并构建。
@@ -74,6 +75,15 @@ namespace Crystal.Rendering.Editor
                 if (root.GetComponent<AppLifecycle>() != null) return;
             var go = new GameObject("AppLifecycle");
             go.AddComponent<AppLifecycle>();
+        }
+
+        // 幂等挂载 TouchInputAdapter（触控 Input Adapter，阶段7 第 3 项）。
+        static void EnsureTouchInput(Scene scene)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.GetComponent<TouchInputAdapter>() != null) return;
+            var go = new GameObject("TouchInput");
+            go.AddComponent<TouchInputAdapter>();
         }
     }
 }

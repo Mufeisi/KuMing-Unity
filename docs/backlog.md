@@ -16,6 +16,7 @@
 
 ## 低优先级
 
+- [ ] **Android 软键盘（阶段7 第 3 项子项）** — 空场景无输入框消费方（MirTextBox 未在移动端运行），`TouchScreenKeyboard` 桥接推迟至登录/聊天 UI 移动化时一并做。
 - [ ] **Android 安全区适配（阶段7 第 2 项子项）** — 当前空场景无移动 UI，`Screen.safeArea`/凹口适配无可验证目标；推迟至触控 HUD/移动资源包阶段一并做。
 - [ ] **PatcherWebSite 遗留网站项目**（.NET Framework 4.8）阻塞解决方案级 `dotnet build`（MSB4249）— `Legend of Mir.sln`。
   - 建议：与三端迁移无关；要么从解决方案卸载，要么文档注明仅 VS2022 全 MSBuild 可构建。
