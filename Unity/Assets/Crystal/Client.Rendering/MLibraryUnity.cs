@@ -93,7 +93,11 @@ namespace Client.MirGraphics
             int sx = point.X + (offSet ? f.OffX : 0);
             int sy = point.Y + (offSet ? f.OffY : 0);
             float o = opacity < 0 ? 1f : opacity;
-            var c = new UnityEngine.Color(colour.R / 255f, colour.G / 255f, colour.B / 255f, (colour.A / 255f) * o);
+            // 顶点色只携带图元色（含其自身 alpha），opacity 单次应用：
+            // DrawOpaque → DrawInternal → quad.color.a = color.a * opacity（旧 DXManager.DrawOpaque(Color4, opacity) 语义）。
+            // 修复前 opacity 同时写进 color.a 与 DrawOpaque 参数 → 双重应用（实际 alpha=o²），
+            // 天气 Fog（BlendRate=0.4）实测 got≈o²·src 暴露；BlendVerify 走 Draw+SetOpacity 单次路径未覆盖此分支。
+            var c = new UnityEngine.Color(colour.R / 255f, colour.G / 255f, colour.B / 255f, colour.A / 255f);
             var rect = new Rect(f.X, f.Y, f.Width, f.Height);
             if (colour.A < 255 || o < 1f)
                 CrystalSpriteBatch.DrawOpaque(tex, rect, new Vector3(sx, sy, 0f), c, o);

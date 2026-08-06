@@ -11,8 +11,8 @@
   - **已解除（2026-08-06）**：用户提供 Server_EN 发布数据（`Server.MirDB` 版本 117 = Crystal `Version`、2338 张 `.map`、24 个 `Configs`、`Envir` 脚本），`Build/Server/publish/` 已验证正常启动；阶段4/5/6 探针已在其上跑通 登录→进图→交互→UI 全链路。
 - [x] **旧客户端 30 分钟基线无法录制** — 依赖上面两项。截图/帧时间/内存/网络 trace 都需要真实资源和可进图的服务器。
   - **已解除（2026-08-06）**：①依赖项①②已就位，技术上可录；②实际验收路径已变更——行为/渲染迁移验收改用 **AssetCompiler golden 直解（.Lib 逐字节 SHA-256）** + **真实服务器 + Unity batchmode 探针（数据/像素双断言）**（阶段3 R1-R11、阶段4 P4-M1..M5、阶段5 迭代包 1-10、阶段6），不再依赖旧 SlimDX 客户端运行时截图基线（Unity/Server 侧零 SlimDX 运行路径）。
-- [ ] **天气系统边缘验证阻塞（阶段6 补验第 11 项）** — 依赖 R7 素材（天气效果动画/贴图），当前资源快照无天气素材，无法录制天气渲染证据。
-  - 建议：R7 资源到位后补验 `S.StartGame`/`S.Weather` 到 Unity 天气渲染链路，并在 compat-matrix 标记该列待验。
+- [x] **天气系统边缘验证阻塞（阶段6 补验第 11 项）** — 依赖 R7 素材（天气效果动画/贴图），当前资源快照无天气素材，无法录制天气渲染证据。
+  - **已解除（2026-08-06）**：`Weather.Lib`（31.7MB，v3 878 图）定位自 `D:\ChuanQi\Baselines\Crystal-G3-Weather-2026-07-31\`（G3 外部天气素材补充快照，sha256 `9A065B7D…`，supplementId `Crystal-G3-Weather-2026-07-31`）。已编译进图集管线（`Build/assetcompile/all/Weather`：compile verify OK + golden 侧车 878 行），Unity 侧 `net-weather.ps1`→`WeatherRender.RunWeather` 全 PASS（阶段6 11/11 完成）。另两个副本：`客户端/Client_VorticeDX11/Data/Weather.Lib`、`客户端/客户端 -外网/Data/Weather.Lib`。
 
 ## 低优先级
 

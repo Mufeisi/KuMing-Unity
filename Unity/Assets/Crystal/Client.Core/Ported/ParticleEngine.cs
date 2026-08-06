@@ -53,6 +53,9 @@ namespace Client.MirGraphics
             this.type = type;
         }
 
+        // 探针支持：引擎类型只读访问（渲染层验证标记引擎）。非移植语义。
+        public ParticleType Type { get { return type; } }
+
         public virtual Particle GenerateNewParticle(ParticleType type)
         {
             // Defensive: ensure we have at least one texture to use
