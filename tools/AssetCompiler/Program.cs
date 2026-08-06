@@ -29,6 +29,7 @@ static class Program
             "golden-dir" => Golden.Run(args),
             "png-dump" => Golden.PngDump(args),
             "png-scan" => Golden.PngScan(args),
+            "manifest" => Manifest.Run(args),
             _ => Usage(args[0]),
         };
     }
@@ -43,6 +44,7 @@ static class Program
         Console.WriteLine("  AssetCompiler golden-dir <outDir>              // 从图集页提取每图 RGBA 写 SHA-256 侧车 <rel>.golden");
         Console.WriteLine("  AssetCompiler png-dump <png> <x> <y> <n>        // dump 区域 n×n 像素 RGBA 十六进制（诊断对照）");
         Console.WriteLine("  AssetCompiler png-scan <png> <x0> <y0> <x1> <y1> [max] // 扫区域找非零像素（诊断对照）");
+        Console.WriteLine("  AssetCompiler manifest <dir> --out <file.json>       // 递归 sha256 资源分发清单（版本校验数据源）");
         return 2;
     }
 
