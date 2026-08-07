@@ -2,6 +2,19 @@
 
 > 主会话唯一维护。每个新任务会话开工前先读本文件，确认文件所有权与已确立模式，避免重做/打架。
 > 更新规则：任务完成后由主会话更新本文件；进行中条目由对应任务会话写入。
+> **权威计划已切换**：任务拆分/状态/排序见 `docs/three-platform-migration-plan.md`（Unity 三端，v2 2026-08-07）。
+> 旧 MonoGame PRD/单人计划已标废弃。本文件继续作为已完成工作与踩坑的流水账。
+
+## ⚡ 当前任务（2026-08-07）
+
+**进行中：阶段8 第2项 增量1——移动背包按钮 + InventoryDialog 触控接入（代码已写，未提交）**
+
+- 已做代码：`MobileBag.cs`（右上角背包开关按钮，纯逻辑）；`UiText`/`TextGlyphBuilder` 由 Editor 移入 `Client.Rendering`（运行时文本桥）；`GameSession.InitInGameDialogs`（进图实例化 MainDialog+InventoryDialog）；`MobileBootstrap` 接线（RenderHud 画面板/按钮、PollJoystick UI hit-test 互斥、ToggleBag 日志）。
+- **卡点（2026-08-07）**：在 androidverify.ps1 模拟器 E2E 上验证背包按钮，全天 `touch=0` / 时序不稳，0 提交。
+- **决策（主会话）**：本项验收改为**确定性探针 bagverify（照 joystickverify 模板）+ PC `net-bag.ps1` 回归 + 模拟器冒烟**；androidverify 降为冒烟，不再作硬 gate（见计划 X-1/X-2）。
+- **X-1 完成（2026-08-08）**：`Build/touchdiag.ps1` v2 PASS（正例注入显示 1200,540 → Unity raw=640,360 精确匹配；负例显示 2400,540 右缘丢弃 touch=0）。**证伪「物理 x>1280 被丢弃」旧假设**；实证映射 `raw=(dx×1280/2400, 720−dy×720/1080)`（显示 2400×1080 y 下 ↔ Unity touch backbuffer 1280×720 y 上）。**真根因：渲染=左上原点、触摸=左下原点 y 镜像——MobileBag/MobileHud hit test 未翻转，背包按钮可见右上 (2163,250) 而命中区右下 (2164,830)**；8-0 适配层统一翻转修正。后续注入类调试直接复用 touchdiag 坐标换算，不再进 30 分钟 E2E。
+- **下一步**：先做 8-0 移动 UI 适配层（提取 UiHitTest/坐标翻转/命中规则，含背包按钮收口），再写 `MobileBagVerify` 探针 + `Build/bagverify.ps1` → PASS → commit → PC 回归 → 冒烟。
+- 详细任务分解见计划 `8-0` 与 `8-2-1`（计划 v2.1，已吸收 Codex 评审）。
 
 ## 当前阶段
 
@@ -80,6 +93,12 @@
 **阶段8 第1项（战斗触控 HUD）增量2（自动战斗控制器，2026-08-07 完成）**：`MobileCombat.cs`（`Client.Rendering` runtime 纯逻辑层，与 Unity Input/渲染解耦可确定性单测）：进图后自动索敌（半径 `TargetRadius=10` 格内最近非死亡/非骷髅怪物）→ 不相邻 **PathFinder 寻路逐格 C.Walk 追击**（`FindApproachCell` 取目标 8 邻域最近可走格作 A* 终点，目标 Blocking 不可直达）→ 相邻（`Functions.InRange(…,1)`）**C.Attack 普攻**（对齐 old client 近距攻击1：`GameScene.AttackTime` 节流 + 冷却 `AttackCooldownMs=800`）；目标死亡/被移除自动重选（`TargetValid` 检查 `Dead`+`MapControl.Objects.ContainsKey`）。时钟/动作**静态注入钩子** `Now`/`SendWalk`/`SendAttack`（探针替换捕获 C.Walk/C.Attack 断言，默认真实 `Network.Enqueue`）。**验证 `Build/mobilecombatverify.ps1`**（Unity batchmode 探针 `MobileCombatVerify`，无需服务器，构造虚拟怪物+网格）：索敌（半径内最近）/越界不选/死亡跳过/寻路追击逐格/相邻攻击节流/目标死亡自动重选 → **`[combatverify] PASS cases=6` exit 0**。**⚠️ `@MOB` 不可用（E2E 设计约束）**：发布服务器 `Configs/Setup.ini` `TestServer=False` → `PlayerObject.cs:2927` `!IsGM && !TestServer` 直接 return，非 GM 无法 @MOB 刷怪 → E2E 必须依赖**地图天然刷怪**（出生区 288,616 视野 13 只，索敌半径内 ≥2）。**E2E `Build/net-combatauto.ps1`（`NetProbe.RunCombatAuto` 新 Mode，真实服务器零修改）PASS（2026-08-07）**：独立账号 probecombat1 登录→进图→`new MobileCombat()`（默认钩子真实 Enqueue）→ 主循环 `ProcessCombatFrame`（对象动画推进 + `_combat.Tick()`）→ 击杀判据 `S.ObjectDied(Type=0, 非玩家)` 计数 ≥2 且 `S.ObjectStruck(AttackerID==玩家)` 命中 >0 → **`combatauto ok seq=…UserSpawn:288,616>Kill:351>Kill:386` exit 0，kills=2 hits=2 monsters=13**（自动索敌→追击→攻击→击杀→重选→再击杀全链路真实服务器验证）。**三个集成点**：①**MobileCombat gate 依赖 `GameSession.State`**——NetProbe 不跑 GameSession.Process，进图后手动 `GameSession.State = InGame`；②**`NetProbe.LoadMap` 补 `mc.PathFinder = new PathFinder(mc)`**（与 GameSession.LoadMap 对齐；否则 ChaseTarget 每次 replan `new PathFinder(mc)`，map 700×700 网格重建重）；③**`S.UserLocation` 必须同步玩家位置**（`Movement/CurrentLocation`）——MobileCombat 索敌/追击距离判定依赖 `CurrentLocation`，不同步则走格后位置失真永远打不到。
 
 **阶段8 第1项（战斗触控 HUD）增量3（战斗 HUD 渲染，2026-08-07 完成）**：`MobileHud.cs`（`Client.Rendering` runtime 纯逻辑层，与 Unity Input 解耦可确定性单测）：**右下攻击按钮**（圆心 `(ScreenW-90, ScreenH-160)` 拇指区锚定，半径 60px；Down 命中→按下态，Up 释放即触发 `C.Attack`（滑出仍触发=真机按钮语义），`Cancel` 系统打断不触发；触发后 `AttackCooldownMs=800` 冷却期内灰显不重复，过期恢复）+ **左上玩家血条**（HP 红/MP 蓝，按 `HpRatio` 裁剪 src 渲染，`Max<=0` 防空条免除零）。方向/时钟/动作**静态注入钩子** `Now`/`GetFacing`/`SendAttack`（探针替换捕获方向+冷却断言，默认真实 `Network.Enqueue`，方向=`MapObject.User.Direction`）。**验证 `Build/mobilehudverify.ps1`**（Unity batchmode 探针 `MobileHudVerify`，无需服务器）：命中触发（方向=GetFacing）/按钮外不触发/滑出仍触发/冷却 800ms 阻挡与恢复/Cancel 不触发/血条比例边界（Max=0→0、半血→0.5、超上限 clamp 1）/右下锚定 + `SetScreen` 重布局 → **`[hudverify] PASS cases=7` exit 0**。**真机渲染接入 `MobileBootstrap`**：`OnPostRender` 在 `GameRuntime.RenderScreen()` 后开**第二个 `CrystalSpriteBatch` 批次**（Begin(null, ScreenW, ScreenH) 屏幕模式，End 恢复 active RT，多批次实证安全）画 HUD；批次前 `SetBlend(false,1f,NORMAL)` 防场景残留 additive 漂白（当前默认 NORMAL 为 no-op 防御）；纹理惰性生成一次（攻击按钮=程序化圆盘直径 120 点过滤像素风，血条=180×14 满条纯色按比例裁剪）；`Input.touches` 同摇杆映射喂 `OnTouch`（右下/左下不重叠，与摇杆共存）。**⚠️ 血条分母根因（首轮 E2E `hp=49` 空条）**：服务器 `S.UserInformation` 仅含当前 HP/MP **无 MaxHP**（ServerPackets.cs:606）→ 最大血量须本地从等级/装备/技能计算（`Stats[Stat.HP]`）；`GameSession.EnsureUser` 手动建 `UserObject` 时**漏调 `RefreshStats`**（旧客户端 `Load(info)` 标准路径含 `BindAllItems→RefreshStats→SetAction`，EnsureUser 是简化版）→ `MaxHp=0` → `HpRatio=0` 空条。修复：EnsureUser 补 `user.RefreshStats()`（try/catch 防内部异常传播卡死包处理主循环；`Inventory/Equipment` 默认空数组不 NRE、`GameScene.Scene.Redraw()` 为空 seam、`MLibrary` 空 seam 无 IO 不抛）。**E2E `androidverify.ps1` 扩展 HUD 截图断言 PASS（2026-08-07）**：进图截图（物理 2400×1080 全屏拉伸自降级 1280×720 逻辑，1.875x/1.5y）区域扫描——右下攻击按钮橙圆盘（`R>150 && B<130 && R-B>60`，区域 (2070-2400,700-980)）**atk=27090** + 左上 HP 红条（`R>140 && G<110 && B<110`）**hp=5373**（阈值 300/100），`hud=True`；`login→enter→user→moved` 全链 + 色数 242071 仍 PASS。**一个偶发**：第 2 轮 E2E 两次启动间 `user=False` 无坐标（RefreshStats 加 try/catch 前），第 3 轮同代码 PASS——判断为模拟器时序/环境偶发，非代码回归。
+
+**阶段8 第1项 增量3 补充修复（E2E 稳定性，2026-08-07 提交 7b3c07e）**：增量3 两轮 E2E 均 `moved=False`（16:12/16:47）后定位修复，net-game 回归 PASS + CoreVerify 0 错误后入库：
+- **keepalive 独立心跳（Network.cs，`moved=False` 根因候选）**：原 keepalive 由主循环 Process() 驱动（真实时间判定），模拟器 SwiftShader 0.2fps 帧率下调用稀疏、发送间隔波动可超服务器 10s 超时窗口 → 连接被踢（swipe 阶段后移动包发不出）。改**独立 `Timer` 按真实时间严格发送**（仅 TCP 已连时发、ThreadPool 线程不碰 Unity API、握手前也发=旧行为一致），主循环仅留 60s 节流 `[network] keepalive heartbeat` 状态日志（供 androidverify 断连诊断）；Disconnect 释放 Timer。**完整模拟器 E2E（moved=True 确认）待下一任务验证前置执行**；
+- **GL 三角形规范对角线拆分（CrystalSpriteBatch.cs）**：每 quad 两三角形须共享同一条对角线（TL,TR,BR / BR,BL,TL 规范拆分）；原 `TL,TR,BL / BL,BR,TL` 两条交叉对角线（\ 与 /）在 quad 中央留约 25% 菱形空洞未覆盖 → 透出 clear color → **地图规律黑三角/钻石花屏**（PC/Android 均有，893770b 的 QUADS→TRIANGLES 只解决了一半）；
+- **模拟器帧率适配（MobileBootstrap + androidverify.ps1）**：恢复 `CMain.LogImpl=Debug.Log`（Android logcat 可见 `[mobile]` 全链）+ 5s 节流 `[mobile] fps/touch` 诊断日志 + 摇杆激活时暂停自动战斗（手动优先）；swipe 移动断言等待窗口 12s→30s（触摸事件按帧处理，0.2fps 下 12s 截断）。
+- 附带：SceneRender 缺段负缓存（防每帧 File.Exists+刷日志）、MapRender smTiles 段映射注释修正。
 
 
 ## 已确立的模式 / 决策（ADR 摘要）
