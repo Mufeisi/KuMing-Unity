@@ -214,16 +214,22 @@ if ($chain["user"]) {
     $p = Start-Process -FilePath $adb -ArgumentList @("exec-out", "screencap", "-p") -RedirectStandardOutput $shot1 -NoNewWindow -Wait
     $sz1 = if (Test-Path $shot1) { (Get-Item $shot1).Length } else { 0 }
 }
-# 8. 滑动移动（右滑 → C.Walk 东）；等位置变化。坐标按模拟器降级后 1280x720 横屏（中心 640,360，右滑 800px）
+# 8. 滑动移动（摇杆松手补步 → C.Walk 一格）；等位置变化。
+# 多方向重试：西→东→北→南，任一方向位置变化即 PASS（出生点可能邻墙，单方向东滑会撞墙）。
+# 坐标按模拟器降级后 1280x720 横屏（中心 640,360；swipe 起点即摇杆原点，位移 800px>奔跑阈值）。
 $moved = $false
+$swipes = @(@(1040,360,240,360), @(240,360,1040,360), @(640,620,640,100), @(640,100,640,620))
 if ($chain["enter"] -and $coords.Count -ge 1) {
-    & $adb shell input swipe 240 360 1040 360 150 2>&1 | Out-Null
-    $swipeDeadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $swipeDeadline) {
-        Start-Sleep -Seconds 3
-        $userLines = (& $adb logcat -d -s Unity 2>&1 | Select-String -Pattern "\[mobile\] user@\d+,\d+" | ForEach-Object { $_.ToString() })
-        foreach ($u in $userLines) { if ($u -match "user@(\d+),(\d+)") { $c = "$($Matches[1]),$($Matches[2])"; if ($coords -notcontains $c) { $coords += $c } } }
-        if ($coords.Count -ge 2) { $moved = $true; break }
+    foreach ($sw in $swipes) {
+        & $adb shell input swipe $sw[0] $sw[1] $sw[2] $sw[3] 150 2>&1 | Out-Null
+        $swipeDeadline = (Get-Date).AddSeconds(12)
+        while ((Get-Date) -lt $swipeDeadline) {
+            Start-Sleep -Seconds 3
+            $userLines = (& $adb logcat -d -s Unity 2>&1 | Select-String -Pattern "\[mobile\] user@\d+,\d+" | ForEach-Object { $_.ToString() })
+            foreach ($u in $userLines) { if ($u -match "user@(\d+),(\d+)") { $c = "$($Matches[1]),$($Matches[2])"; if ($coords -notcontains $c) { $coords += $c } } }
+            if ($coords.Count -ge 2) { $moved = $true; break }
+        }
+        if ($moved) { break }
     }
     $p2 = Start-Process -FilePath $adb -ArgumentList @("exec-out", "screencap", "-p") -RedirectStandardOutput $shot2 -NoNewWindow -Wait
 }

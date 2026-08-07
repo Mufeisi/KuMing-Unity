@@ -17,7 +17,6 @@ namespace Crystal.Client.Rendering
     public sealed class MobileBootstrap : MonoBehaviour
     {
         const long MoveIntervalMs = 500; // 走格节流（Mir2 walk 约 0.5s/格，与 PC PollInput 同频）
-        const float SwipeMinPx = 40f;    // 滑动判定最小位移（轻点忽略，UI 触控走 TouchInputAdapter）
         const long PosLogMs = 1000;      // 位置心跳节流（[mobile] user@x,y 供 androidverify 解析实际出生坐标）
 
         // 构建时注入锚点：BuildAndroid 重写 MobileConfig.cs（env：CRYSTAL_NET_HOST/PORT/LOGIN_ID/LOGIN_PW），
@@ -29,11 +28,12 @@ namespace Crystal.Client.Rendering
 
         bool _booted;
         bool _renderReady;
-        bool _swiping;
-        Vector2 _swipeStart;
         long _lastMoveAt;
+        long _lastStepAt;   // 最近一次发出移动包时刻（服务器 _stepCounter>0 才允许 Run，模拟助跑）
         long _lastPosLogAt;
         string _lastLoggedPos;
+        readonly TouchJoystick _joystick = new TouchJoystick();
+        readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
 
         void Start()
         {
@@ -100,8 +100,9 @@ namespace Crystal.Client.Rendering
         void Update()
         {
             if (!_booted) return;
-            PollSwipe();
+            PollJoystick();
             GameRuntime.TickLogic();
+            if (!_joystick.Active) _combat.Tick(); // 手动摇杆优先：拖动时暂停自动战斗
             LogPosition();
             // 渲染就绪钩子：首帧 BuildLibIndex 全图扫描慢（模拟器 swiftshader 约 2.6s），
             // androidverify 等此日志后再截图/swipe（避免纯色误判 + 低帧率触摸丢失）。
@@ -125,34 +126,51 @@ namespace Crystal.Client.Rendering
             GameRuntime.ReleaseAll();
         }
 
-        // 滑动 → 8 方向走格（Mir2 移动语义：C.Walk，与 PC WASD 同通道）。
-        // 只消费主触点滑动：按下锁定起点，抬起按位移主轴向发走格；轻点/取消忽略（UI 触控留 TouchInputAdapter）。
-        void PollSwipe()
+        // 触控移动摇杆（阶段8 第1项）：浮动摇杆——按住节流连续走（Mir2 walk 0.5s/格），
+        // 超奔跑阈值切跑（C.Run）；松手时若刚拖拽过（上一帧 Moving）补发一步，保证快速轻滑（如 adb swipe 150ms）也触发移动。
+        // 奔跑需助跑：服务器 HumanObject.CanRun 要求 _stepCounter>0（Walk 累积、静止 700ms 清零），
+        // 静止直接发 C.Run 会被拒（原地不动）；故 700ms 内发过移动包才切 Run，否则首包/补步发 C.Walk。
+        // TouchJoystick 纯逻辑层喂 Input.touches；移动通道与 PC WASD 同（C.Walk/C.Run 8 向）。
+        void PollJoystick()
         {
             if (GameSession.State != GameSessionState.InGame || GameSession.User == null) return;
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch t = Input.GetTouch(i);
-                if (t.phase == TouchPhase.Began)
+                var phase = t.phase switch
                 {
-                    _swiping = true;
-                    _swipeStart = t.position;
-                }
-                else if (t.phase == TouchPhase.Ended && _swiping)
+                    TouchPhase.Began => JoystickPhase.Down,
+                    TouchPhase.Moved => JoystickPhase.Move,
+                    TouchPhase.Ended => JoystickPhase.Up,
+                    TouchPhase.Canceled => JoystickPhase.Cancel,
+                    _ => JoystickPhase.Move, // Stationary：保持当前方向
+                };
+                _joystick.OnTouch(t.fingerId, phase, t.position);
+            }
+
+            bool moving = _joystick.Active && _joystick.Moving;
+            if (moving)
+            {
+                if (CMain.Time - _lastMoveAt >= MoveIntervalMs)
                 {
-                    _swiping = false;
-                    Vector2 d = t.position - _swipeStart;
-                    if (Mathf.Abs(d.x) < SwipeMinPx && Mathf.Abs(d.y) < SwipeMinPx) return; // 轻点
-                    if (CMain.Time - _lastMoveAt < MoveIntervalMs) return;
                     _lastMoveAt = CMain.Time;
-                    MirDirection dir;
-                    if (Mathf.Abs(d.x) > Mathf.Abs(d.y)) dir = d.x > 0 ? MirDirection.Right : MirDirection.Left;
-                    else dir = d.y > 0 ? MirDirection.Down : MirDirection.Up;
-                    Network.Enqueue(new C.Walk { Direction = dir });
+                    bool ready = CMain.Time - _lastStepAt < 700; // 700ms 内移动过 → 服务器步数已积累，可跑
+                    Network.Enqueue(ready && _joystick.Run
+                        ? new C.Run { Direction = _joystick.Dir }
+                        : new C.Walk { Direction = _joystick.Dir });
+                    _lastStepAt = CMain.Time;
                 }
-                else if (t.phase == TouchPhase.Canceled)
+            }
+            else if (_joystick.ReleasedWithIntent)
+            {
+                // 松手补一步：ReleasedWithIntent 由 Ended 位置位移判定（Moved 整帧丢失也触发移动）。
+                // 轻扫意图=一格，且静止起跑无助跑，一律 C.Walk（C.Run 会被服务器拒）。
+                _joystick.ClearRelease();
+                if (CMain.Time - _lastMoveAt >= MoveIntervalMs)
                 {
-                    _swiping = false;
+                    _lastMoveAt = CMain.Time;
+                    Network.Enqueue(new C.Walk { Direction = _joystick.LastDir });
+                    _lastStepAt = CMain.Time;
                 }
             }
         }
