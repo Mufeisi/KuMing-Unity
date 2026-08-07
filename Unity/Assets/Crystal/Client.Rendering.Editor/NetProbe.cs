@@ -44,7 +44,7 @@ namespace Crystal.Rendering.Editor
     //   -executeMethod Crystal.Rendering.Editor.NetProbe.RunLogin | .RunSelect | .RunGame | .RunInteract | .RunLogout | .RunDualOpen
     static class NetProbe
     {
-        enum Mode { Login, Select, Game, Interact, Logout, DualOpen, Hud, Ui, Bag, UiInput, Npc, Skill, Quest, Team, Market, Hero, Shop, Settings, Edge }
+        enum Mode { Login, Select, Game, Interact, Logout, DualOpen, Hud, Ui, Bag, UiInput, Npc, Skill, Quest, Team, Market, Hero, Shop, Settings, Edge, CombatAuto }
         enum InteractStep { Init, Chat, Bag, Npc, Pickup, Use, Combat, Done }
         enum LogoutPhase { Entering, WaitLogOut, ReEntering }
 
@@ -68,6 +68,14 @@ namespace Crystal.Rendering.Editor
         static long _gameDeadline = -1;
         static int _monsterCount, _npcCount, _moveCount, _removeCount;
         static int _renderedMonsters, _renderedNPCs, _drawn;
+
+        // CombatAuto 模式状态（阶段8 增量2：MobileCombat 自动战斗接真实服务器 E2E）。
+        // 进图后 new MobileCombat（真实 Network.Enqueue），Tick 驱动索敌→追击→攻击→击杀。
+        static MobileCombat _combat;
+        static int _combatKills;    // 击杀数（S.ObjectDied Type=0 且非玩家）
+        static int _combatHits;     // 我方攻击命中数（S.ObjectStruck AttackerID==玩家）
+        static int _combatMonsters; // 视野怪物总数（S.ObjectMonster 计数，诊断索敌环境）
+        static long _combatDeadline;
 
         // HUD 模式状态（P4-M5：S.UserInformation 驱动的 HP/MP/Level 状态条叠加渲染）
         static bool _drawHud;
@@ -392,6 +400,18 @@ namespace Crystal.Rendering.Editor
             Run(Mode.Settings);
         }
 
+        public static void RunCombatAuto()
+        {
+            _mapDir = GetEnv("CRYSTAL_MAP_DIR", "Build/Server/publish/Maps");
+            _atlasDir = GetEnv("CRYSTAL_ATLAS_DIR", "Build/assetcompile/all");
+            _mapName = GetEnv("CRYSTAL_MAP", "nn0.Map");
+            _outPath = GetEnv("CRYSTAL_OUT", "Build/net-combatauto.png");
+            _rtW = GetInt("CRYSTAL_RT_W", 1024);
+            _rtH = GetInt("CRYSTAL_RT_H", 768);
+            _drawUi = false;
+            Run(Mode.CombatAuto);
+        }
+
         static void Run(Mode mode)
         {
             _mode = mode;
@@ -538,6 +558,17 @@ namespace Crystal.Rendering.Editor
                         Done(_uiOk, _uiFail);
                     }
                 }
+                else if (_mode == Mode.CombatAuto && _gameEntered)
+                {
+                    ProcessCombatFrame();
+                    if (_combatKills >= 2)
+                    {
+                        Console.WriteLine($"[netprobe] combatauto done kills={_combatKills} hits={_combatHits} monsters={_combatMonsters}");
+                        Done(true, null);
+                    }
+                    else if (_combatDeadline > 0 && CMain.Time >= _combatDeadline)
+                        Done(false, $"combat-timeout kills={_combatKills} hits={_combatHits} monsters={_combatMonsters}");
+                }
                 else if (_mode == Mode.Edge)
                 {
                     ProcessEdge();
@@ -565,7 +596,7 @@ namespace Crystal.Rendering.Editor
             _bStop = true;
             if (!_done) _fail = "timeout";
 
-            string tag = _mode == Mode.Login ? "login" : _mode == Mode.Select ? "select" : _mode == Mode.Game ? "game" : _mode == Mode.Interact ? "interact" : _mode == Mode.Logout ? "logout" : _mode == Mode.Hud ? "hud" : _mode == Mode.Ui ? "ui" : _mode == Mode.Bag ? "bag" : _mode == Mode.UiInput ? "input" : _mode == Mode.Npc ? "npc" : _mode == Mode.Skill ? "skill" : _mode == Mode.Quest ? "quest" : _mode == Mode.Team ? "team" : _mode == Mode.Market ? "market" : _mode == Mode.Hero ? "hero" : _mode == Mode.Shop ? "shop" : _mode == Mode.Settings ? "settings" : _mode == Mode.Edge ? "edge" : "dualopen";
+            string tag = _mode == Mode.Login ? "login" : _mode == Mode.Select ? "select" : _mode == Mode.Game ? "game" : _mode == Mode.Interact ? "interact" : _mode == Mode.Logout ? "logout" : _mode == Mode.Hud ? "hud" : _mode == Mode.Ui ? "ui" : _mode == Mode.Bag ? "bag" : _mode == Mode.UiInput ? "input" : _mode == Mode.Npc ? "npc" : _mode == Mode.Skill ? "skill" : _mode == Mode.Quest ? "quest" : _mode == Mode.Team ? "team" : _mode == Mode.Market ? "market" : _mode == Mode.Hero ? "hero" : _mode == Mode.Shop ? "shop" : _mode == Mode.Settings ? "settings" : _mode == Mode.Edge ? "edge" : _mode == Mode.CombatAuto ? "combatauto" : "dualopen";
             if (_ok)
                 Console.WriteLine($"[netprobe] {tag} ok seq={string.Join(">", _seq)}");
             else
@@ -663,6 +694,16 @@ namespace Crystal.Rendering.Editor
                     if (sg.Result == 4)
                     {
                         _gameEntered = true;
+                        if (_mode == Mode.CombatAuto)
+                        {
+                            // MobileCombat gate 依赖 GameSession.State（NetProbe 不跑 GameSession.Process，直接设态）。
+                            GameSession.State = GameSessionState.InGame;
+                            _combat = new MobileCombat();
+                            _combatKills = 0; _combatHits = 0; _combatMonsters = 0;
+                            _combatDeadline = CMain.Time + 90000;
+                            _seq.Add("CombatAutoStart");
+                            Console.WriteLine($"[netprobe] combatauto start deadline={_combatDeadline}");
+                        }
                         if (_mode == Mode.Edge && _edgeSub == "recon" && _estep == EdgeStep.ReconReconn)
                         {
                             // 断线重连后重进成功
@@ -692,7 +733,7 @@ namespace Crystal.Rendering.Editor
                     var mi = (S.MapInformation)p;
                     _mapFile = mi.FileName ?? "";
                     _seq.Add($"MapInformation:{mi.FileName}");
-                    if ((_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.Ui || _mode == Mode.Bag || _mode == Mode.UiInput || _mode == Mode.Npc || _mode == Mode.Skill || _mode == Mode.Quest || _mode == Mode.Team || _mode == Mode.Market || _mode == Mode.Hero || _mode == Mode.Shop || _mode == Mode.Settings || _mode == Mode.Edge) && !_mapLoaded && _mapFile.Length > 0)
+                    if ((_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.Ui || _mode == Mode.Bag || _mode == Mode.UiInput || _mode == Mode.Npc || _mode == Mode.Skill || _mode == Mode.Quest || _mode == Mode.Team || _mode == Mode.Market || _mode == Mode.Hero || _mode == Mode.Shop || _mode == Mode.Settings || _mode == Mode.Edge || _mode == Mode.CombatAuto) && !_mapLoaded && _mapFile.Length > 0)
                         LoadMap();
                     MaybeDone();
                     break;
@@ -726,7 +767,7 @@ namespace Crystal.Rendering.Editor
                         if (MapObject.User == null)
                             EnsureUser(ui);
                     }
-                    else if ((_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.Ui || _mode == Mode.Bag || _mode == Mode.UiInput || _mode == Mode.Npc || _mode == Mode.Skill || _mode == Mode.Quest || _mode == Mode.Team || _mode == Mode.Market || _mode == Mode.Hero || _mode == Mode.Shop || _mode == Mode.Settings) && MapObject.User == null)
+                    else if ((_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.Ui || _mode == Mode.Bag || _mode == Mode.UiInput || _mode == Mode.Npc || _mode == Mode.Skill || _mode == Mode.Quest || _mode == Mode.Team || _mode == Mode.Market || _mode == Mode.Hero || _mode == Mode.Shop || _mode == Mode.Settings || _mode == Mode.CombatAuto) && MapObject.User == null)
                         EnsureUser(ui);
                     else if (_mode == Mode.Interact && ui.Inventory != null)
                     {
@@ -752,7 +793,11 @@ namespace Crystal.Rendering.Editor
                     }
                     break;
                 case (short)ServerPacketIds.ObjectMonster:
-                    if (_mode == Mode.Game || _mode == Mode.Hud) ObjectMonster((S.ObjectMonster)p);
+                    if (_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.CombatAuto)
+                    {
+                        if (_mode == Mode.CombatAuto) _combatMonsters++;
+                        ObjectMonster((S.ObjectMonster)p);
+                    }
                     else if (_mode == Mode.Interact)
                     {
                         var om = (S.ObjectMonster)p;
@@ -772,10 +817,10 @@ namespace Crystal.Rendering.Editor
                     }
                     break;
                 case (short)ServerPacketIds.ObjectTurn:
-                    if (_mode == Mode.Game || _mode == Mode.Hud) ObjectMove((S.ObjectTurn)p, MirAction.Standing);
+                    if (_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.CombatAuto) ObjectMove((S.ObjectTurn)p, MirAction.Standing);
                     break;
                 case (short)ServerPacketIds.ObjectWalk:
-                    if (_mode == Mode.Game || _mode == Mode.Hud) ObjectMove((S.ObjectWalk)p, MirAction.Walking);
+                    if (_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.CombatAuto) ObjectMove((S.ObjectWalk)p, MirAction.Walking);
                     else if (_mode == Mode.Interact) TrackMonster(((S.ObjectWalk)p).ObjectID, new MPoint(((S.ObjectWalk)p).Location.X, ((S.ObjectWalk)p).Location.Y));
                     else if (_mode == Mode.DualOpen && _aSeenPlayerB && ((S.ObjectWalk)p).ObjectID == _bObjIdFromA)
                     {
@@ -784,11 +829,11 @@ namespace Crystal.Rendering.Editor
                     }
                     break;
                 case (short)ServerPacketIds.ObjectRun:
-                    if (_mode == Mode.Game || _mode == Mode.Hud) ObjectMove((S.ObjectRun)p, MirAction.Running);
+                    if (_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.CombatAuto) ObjectMove((S.ObjectRun)p, MirAction.Running);
                     else if (_mode == Mode.Interact) TrackMonster(((S.ObjectRun)p).ObjectID, new MPoint(((S.ObjectRun)p).Location.X, ((S.ObjectRun)p).Location.Y));
                     break;
                 case (short)ServerPacketIds.ObjectRemove:
-                    if (_mode == Mode.Game || _mode == Mode.Hud) ObjectRemove((S.ObjectRemove)p);
+                    if (_mode == Mode.Game || _mode == Mode.Hud || _mode == Mode.CombatAuto) ObjectRemove((S.ObjectRemove)p);
                     else if (_mode == Mode.Interact)
                     {
                         var orm = (S.ObjectRemove)p;
@@ -820,6 +865,13 @@ namespace Crystal.Rendering.Editor
                         _userLoc = new MPoint(uloc.Location.X, uloc.Location.Y);
                         _userDir = uloc.Direction;
                         _movePending = false;
+                    }
+                    else if (_mode == Mode.CombatAuto && MapObject.User != null)
+                    {
+                        // 移动确认：同步玩家位置（MobileCombat 索敌/追击距离判定依赖 CurrentLocation）。
+                        var uac = (S.UserLocation)p;
+                        MapObject.User.Movement = new MPoint(uac.Location.X, uac.Location.Y);
+                        MapObject.User.CurrentLocation = new MPoint(uac.Location.X, uac.Location.Y);
                     }
                     break;
                 case (short)ServerPacketIds.ObjectChat:
@@ -947,9 +999,20 @@ namespace Crystal.Rendering.Editor
                         var od = (S.ObjectDied)p;
                         _seq.Add($"Died:{od.ObjectID}");
                     }
+                    else if (_mode == Mode.CombatAuto)
+                    {
+                        var odc = (S.ObjectDied)p;
+                        if (odc.ObjectID != _userObjId && odc.Type == 0)
+                        {
+                            _combatKills++;
+                            _seq.Add($"Kill:{odc.ObjectID}");
+                            Console.WriteLine($"[netprobe] combatauto kill={odc.ObjectID} total={_combatKills} hits={_combatHits} monsters={_combatMonsters}");
+                        }
+                    }
                     break;
                 case (short)ServerPacketIds.Death:
                     if (_mode == Mode.Interact) _seq.Add("PlayerDeath");
+                    else if (_mode == Mode.CombatAuto) Done(false, "player-died");
                     else if (_mode == Mode.Edge && _edgeSub == "revive" && _estep == EdgeStep.ReviveDie)
                     {
                         // 死亡确认 → 发送回城复活 C.TownRevive
@@ -1071,6 +1134,12 @@ namespace Crystal.Rendering.Editor
                             NextStep();
                         }
                     }
+                    else if (_mode == Mode.CombatAuto)
+                    {
+                        // 我方攻击命中计数（自动战斗有效性交叉验证：ObjectDied 击杀 + 此处命中链路）。
+                        var oskc = (S.ObjectStruck)p;
+                        if (oskc.ObjectID != _userObjId && oskc.AttackerID == _userObjId) _combatHits++;
+                    }
                     break;
                 case (short)ServerPacketIds.DamageIndicator:
                     if (_mode == Mode.Interact && _istep == InteractStep.Combat)
@@ -1173,6 +1242,7 @@ namespace Crystal.Rendering.Editor
                 Width = _mapReader.Width,
                 Height = _mapReader.Height,
             };
+            mc.PathFinder = new PathFinder(mc); // A* 依赖 mc.EmptyCell（Node.Walkable），须在 M2CellInfo 赋值后构造
             GameScene.Scene = new GameScene { MapControl = mc };
             GameScene.CanMove = true;
             _mapLoaded = true;
@@ -1200,6 +1270,13 @@ namespace Crystal.Rendering.Editor
                 if (o == MapObject.User) continue;
                 o.Process();
             }
+        }
+
+        // CombatAuto 帧驱动：对象动画推进 + MobileCombat 自动战斗（索敌→追击→攻击→击杀）。
+        static void ProcessCombatFrame()
+        {
+            ProcessGameFrame();
+            _combat?.Tick();
         }
 
         static void RenderGame()

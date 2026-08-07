@@ -186,6 +186,28 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.UserLocation:
                     UserLocation((S.UserLocation)p);
                     break;
+                case (short)ServerPacketIds.HealthChanged:
+                    var hc = (S.HealthChanged)p;
+                    if (MapObject.User != null)
+                    {
+                        MapObject.User.HP = hc.HP;
+                        MapObject.User.MP = hc.MP;
+                    }
+                    break;
+                case (short)ServerPacketIds.ObjectHealth:
+                    var oh = (S.ObjectHealth)p;
+                    if (MapControl.Objects.TryGetValue(oh.ObjectID, out var objH))
+                    {
+                        objH.PercentHealth = oh.Percent;
+                        objH.HealthTime = CMain.Time + oh.Expire * 1000;
+                    }
+                    break;
+                case (short)ServerPacketIds.ObjectStruck:
+                    ObjectStruck((S.ObjectStruck)p);
+                    break;
+                case (short)ServerPacketIds.ObjectDied:
+                    ObjectDied((S.ObjectDied)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -247,6 +269,32 @@ namespace Crystal.Client.Rendering
                 ob.Remove();
         }
 
+        // 受击动画（对齐 old client GameScene.ObjectStruck：被击动作入队，自身跳过；无特效/Buff 简化）。
+        static void ObjectStruck(S.ObjectStruck p)
+        {
+            if (MapObject.User != null && p.ObjectID == MapObject.User.ObjectID) return;
+            if (!MapControl.Objects.TryGetValue(p.ObjectID, out var ob)) return;
+            if (ob.SkipFrames) return;
+            if (ob.ActionFeed.Count > 0 && ob.ActionFeed[ob.ActionFeed.Count - 1].Action == MirAction.Struck) return;
+            ob.ActionFeed.Add(new QueuedAction { Action = MirAction.Struck, Direction = p.Direction, Location = new MPoint(p.Location.X, p.Location.Y) });
+        }
+
+        // 死亡（对齐 old client GameScene.ObjectDied：Type=0 死亡动作+Dead 留尸，1/2 直接移除——无 Magic2 特效库不播）。
+        static void ObjectDied(S.ObjectDied p)
+        {
+            if (MapObject.User != null && p.ObjectID == MapObject.User.ObjectID) return;
+            if (!MapControl.Objects.TryGetValue(p.ObjectID, out var ob)) return;
+            if (p.Type == 0)
+            {
+                ob.ActionFeed.Add(new QueuedAction { Action = MirAction.Die, Direction = p.Direction, Location = new MPoint(p.Location.X, p.Location.Y) });
+                ob.Dead = true;
+            }
+            else
+            {
+                ob.Remove();
+            }
+        }
+
         static void UserLocation(S.UserLocation p)
         {
             if (MapObject.User == null) return;
@@ -272,6 +320,7 @@ namespace Crystal.Client.Rendering
                 Width = reader.Width,
                 Height = reader.Height,
             };
+            mc.PathFinder = new PathFinder(mc); // A* 依赖 mc.EmptyCell（Node.Walkable），须在 M2CellInfo 赋值后构造
             GameScene.Scene = new GameScene { MapControl = mc };
             GameScene.CanMove = true;
             MapReader = reader;
@@ -287,6 +336,11 @@ namespace Crystal.Client.Rendering
                 OffSetMove = MPoint.Empty,
                 Direction = ui.Direction,
                 Name = ui.Name,
+                HP = ui.HP,
+                MP = ui.MP,
+                Class = ui.Class,
+                Gender = ui.Gender,
+                Level = ui.Level,
             };
             MapObject.User = user;
             User = user;

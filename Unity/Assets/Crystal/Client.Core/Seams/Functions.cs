@@ -14,6 +14,11 @@ namespace Client.MirObjects
             return global::Functions.MaxDistance(new System.Drawing.Point(p1.X, p1.Y), new System.Drawing.Point(p2.X, p2.Y));
         }
 
+        public static bool InRange(Point p1, Point p2, int distance)
+        {
+            return global::Functions.InRange(new System.Drawing.Point(p1.X, p1.Y), new System.Drawing.Point(p2.X, p2.Y), distance);
+        }
+
         public static MirDirection DirectionFromPoint(Point source, Point dest)
         {
             return global::Functions.DirectionFromPoint(new System.Drawing.Point(source.X, source.Y), new System.Drawing.Point(dest.X, dest.Y));
