@@ -13,6 +13,7 @@
 - **卡点（2026-08-07）**：在 androidverify.ps1 模拟器 E2E 上验证背包按钮，全天 `touch=0` / 时序不稳，0 提交。
 - **决策（主会话）**：本项验收改为**确定性探针 bagverify（照 joystickverify 模板）+ PC `net-bag.ps1` 回归 + 模拟器冒烟**；androidverify 降为冒烟，不再作硬 gate（见计划 X-1/X-2）。
 - **X-1 完成（2026-08-08）**：`Build/touchdiag.ps1` v2 PASS（正例注入显示 1200,540 → Unity raw=640,360 精确匹配；负例显示 2400,540 右缘丢弃 touch=0）。**证伪「物理 x>1280 被丢弃」旧假设**；实证映射 `raw=(dx×1280/2400, 720−dy×720/1080)`（显示 2400×1080 y 下 ↔ Unity touch backbuffer 1280×720 y 上）。**真根因：渲染=左上原点、触摸=左下原点 y 镜像——MobileBag/MobileHud hit test 未翻转，背包按钮可见右上 (2163,250) 而命中区右下 (2164,830)**；8-0 适配层统一翻转修正。后续注入类调试直接复用 touchdiag 坐标换算，不再进 30 分钟 E2E。
+- **X-2 完成（2026-08-08）**：`Build/androidverify.ps1 -Smoke` 冒烟化 PASS——单次进图（缓存出生坐标 / 无缓存回落地图中心）+ 五断言 `chain: connect=True enter=True login=True select=True user=True coords=294,615` + hud-scan 正常；bag/moved 时序敏感断言降级 WARN-only 不挡 PASS。硬 gate 退出舞台，移动验收全走确定性探针。
 - **下一步**：先做 8-0 移动 UI 适配层（提取 UiHitTest/坐标翻转/命中规则，含背包按钮收口），再写 `MobileBagVerify` 探针 + `Build/bagverify.ps1` → PASS → commit → PC 回归 → 冒烟。
 - 详细任务分解见计划 `8-0` 与 `8-2-1`（计划 v2.1，已吸收 Codex 评审）。
 

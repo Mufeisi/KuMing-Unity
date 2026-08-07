@@ -159,7 +159,7 @@
 - ✅ 实证结论（2026-08-08，v2 重写）：**v1 的「物理 x>1280 注入被 Unity 丢弃（touch=0）」假设被证伪**——负例物理 x=2200 仍 touch=1 到达 Unity。9 点注入实验钉死真实映射：显示系（adb input/截图）2400×1080 y 向下 ↔ backbuffer 系（Unity touch.position）1280×720 y 向上，变换 `raw=(dx×1280/2400, 720−dy×720/1080)`，仅 raw_x≥1280 或 raw_y=0（显示 dx=2400 或 dy=1080 精确边缘）被丢。**真根因：渲染（CrystalSpriteBatch）用左上原点、Unity 触摸用左下原点，y 镜像；MobileBootstrap.UiHitTest 翻了 y（MirControl 左上 rect 正确），但 MobileBag/MobileHud 的 hit test 未翻 → 背包/攻击按钮可见位置与命中区上下颠倒**（截图扫描 + 注入实验 + 源码三处互证：背包渲染右上 (2163,250)、编码命中区右下 (2164,830)）。该 bug 由 8-0 适配层统一翻转修正。
 
 #### X-2 androidverify.ps1 冒烟化改造
-状态：🔲｜预估：0.5d｜依赖：X-1
+状态：✅（2026-08-08 完成）｜预估：0.5d｜依赖：X-1
 
 - 目标：把 androidverify 从「硬 gate 断言脚本」降为「冒烟 + 诊断产物脚本」。
 - 开发：保留 登录/进图/截图/坐标日志链路；去掉 `moved`/`bag` 等时序敏感硬断言，改为 WARN 输出 + 产物归档；新增 `-Smoke` 开关（跳过二次裁剪/重推/重启的重复步骤，只做单次进图+截图）；`$stepTotal` 与实际步骤对齐。
@@ -167,6 +167,7 @@
 - 验证：`Build/androidverify.ps1 -Smoke` PASS；对比冒烟 vs 硬 gate 耗时。
 - 提交：`refactor(阶段8): androidverify 降级为冒烟`。
 - 验收：30-40 分钟一轮的硬 gate 不再存在；移动验收走确定性探针，androidverify 只留诊断价值。
+- ✅ 实证（2026-08-08）：`-Smoke` 冒烟 PASS——单次进图（缓存出生坐标 / 无缓存回落地图中心 350,350 跳过 discovery）+ 全链路五断言 `chain: connect=True enter=True login=True select=True user=True coords=294,615` + hud-scan（atk/hp）正常；bag/moved 时序敏感断言按时序降级为 WARN-only（产物归档不挡 PASS）。冒烟耗时约 2 分钟（复用 warm 模拟器），硬 gate 退出舞台，移动验收全走确定性探针。
 
 #### 8-0 移动 UI 适配层（评审建议「阶段7.5」的落地形态）
 状态：🔲｜预估：1d｜依赖：X-1, X-2
