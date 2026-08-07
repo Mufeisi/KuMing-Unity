@@ -92,6 +92,9 @@ namespace Crystal.Rendering.Editor
                 hud.OnTouch(0, JoystickPhase.Cancel, c);
                 Check(!hud.AttackPressed, "case5 cancel clears pressed");
                 Check(attacks.Count == 4, "case5 cancel no attack");
+                // Cancel 后抑制松手容错：残留 Up 命中按钮也不触发攻击
+                hud.OnTouch(0, JoystickPhase.Up, c);
+                Check(attacks.Count == 4, "case5 post-cancel up no attack");
             }
 
             // ===== case6 血条比例边界 =====

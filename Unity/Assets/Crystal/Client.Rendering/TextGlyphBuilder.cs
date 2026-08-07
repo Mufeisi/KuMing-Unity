@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Crystal.Rendering.Editor
+namespace Crystal.Client.Rendering
 {
     // 文本字形合成器：修复 TextGenerator 多字形 UV 失效（≥6 字形时整段 Populate 的 verts UV 塌缩到窄列、
     // 出现负宽度 quad，且会跳过部分字符——"4. Movements" 12 字符只出 11 quad，丢 's'）。

@@ -95,5 +95,9 @@ namespace Crystal.Client.Rendering
             _touchId = -1;
             _dir = MirDirection.Up;
         }
+
+        // 外部打断（背包面板打开等）：丢弃未松手的手指锁并复位。若不加，面板打开期间触摸不再喂入
+        // 摇杆，旧手指的 Up 永久丢失 → _active 恒 true，面板关闭后新 Down 全被忽略（摇杆失效）。
+        public void Cancel() => Reset();
     }
 }

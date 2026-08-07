@@ -54,6 +54,7 @@ namespace Crystal.Client.Rendering
         public bool AttackPressed => _attackPressed;
         public bool AttackReady => Now() >= _attackCdUntil;
         long _attackCdUntil;
+        bool _canceled; // Cancel 后抑制松手容错路径（系统打断后 Up 不触发攻击）
 
         // 触摸喂入：Down 命中按钮 → 按下态（视觉亮起）；Up 释放 → 触发攻击（滑出仍触发，真机按钮语义）。
         // 与摇杆共存：MobileBootstrap 先喂摇杆（左侧）再喂 HUD（右侧），Down 由摇杆锁主导、按钮独立。
@@ -61,7 +62,15 @@ namespace Crystal.Client.Rendering
         {
             if (phase == JoystickPhase.Down)
             {
+                _canceled = false;
                 if (InAttack(pos)) _attackPressed = true;
+            }
+            // Ended 容错（模拟器低帧率 tap 帧合并，同 MobileBag）：Began 丢失时 Up 命中按钮仍触发攻击。
+            // Cancel 后抑制（系统打断）。
+            else if (phase == JoystickPhase.Up && InAttack(pos) && !_attackPressed && !_canceled)
+            {
+                if (AttackReady) TriggerAttack();
+                return;
             }
             else if (_attackPressed)
             {
@@ -73,11 +82,16 @@ namespace Crystal.Client.Rendering
                 else if (phase == JoystickPhase.Cancel)
                 {
                     _attackPressed = false; // 系统打断不触发
+                    _canceled = true;
                 }
             }
         }
 
         bool InAttack(Vector2 pos) => (pos - _attackCenter).magnitude <= AttackRadius;
+
+        // 外部打断（背包面板打开等）：丢弃攻击按钮按下态（面板打开期间触摸不喂入，Up 永久丢失），
+        // 并抑制后续松手容错（防面板关闭后残留 Up 误触发攻击）。
+        public void Cancel() { _attackPressed = false; _canceled = true; }
 
         void TriggerAttack()
         {

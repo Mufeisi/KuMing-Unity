@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Client.MirControls;
-using Crystal.Client.Rendering;
 using UnityEngine;
 // 显式别名：Client.Core 的 MirMath 类型 + seam Graphics/TextFormatFlags/MirControl，
 // 避免与 UnityEngine.FontStyle/Graphics/Color 歧义（NetProbe 同款别名策略）。
@@ -14,7 +13,7 @@ using MRect = Crystal.Client.Core.MirMath.Rectangle;
 using MSize = Crystal.Client.Core.MirMath.Size;
 using MFont = Crystal.Client.Core.MirMath.Font;
 
-namespace Crystal.Rendering.Editor
+namespace Crystal.Client.Rendering
 {
     // TextRenderer 渲染桥：把 Client.Core 的 TextRenderer seam 静态委托接到
     // Unity 动态字体（TextGenerator CPU 字形）+ CrystalSpriteBatch（R8 管线）。

@@ -6,6 +6,7 @@ using Client.MirGraphics;
 using Client.MirNetwork;
 using Client.MirObjects;
 using Client.MirScenes;
+using Client.MirScenes.Dialogs;
 using UnityEngine;
 using C = ClientPackets;
 using S = ServerPackets;
@@ -325,6 +326,36 @@ namespace Crystal.Client.Rendering
             GameScene.CanMove = true;
             MapReader = reader;
             MapFileName = fileName;
+            InitInGameDialogs();
+        }
+
+        // 进图实例化 HUD 状态条 + 背包对话框（阶段8 第2项 增量1）：挂 GameScene.Scene。
+        // 顺序契约：Settings 屏幕尺寸先同步（MainDialog.Location 依赖）；Libraries.* 换
+        // atlas-backed MLibraryUnity（对话框 ctor 的 AutoSize 尺寸/锚点来自真实帧）；缺库
+        // （Android 区域裁剪不含 UI 段时）负缓存 null → 对话框 ctor 安全（控件 Library null
+        // 不绘制、Size 回退默认），try/catch 防异常传播卡死包处理主循环。
+        static void InitInGameDialogs()
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            Settings.ScreenWidth = GameRuntime.ScreenW;
+            Settings.ScreenHeight = GameRuntime.ScreenH;
+            if (Libraries.Prguse == null) Libraries.Prguse = GameRenderer.EnsureMLibrary("Prguse");
+            if (Libraries.Prguse2 == null) Libraries.Prguse2 = GameRenderer.EnsureMLibrary("Prguse2");
+            if (Libraries.Items == null) Libraries.Items = GameRenderer.EnsureMLibrary("Items");
+            if (Libraries.Title == null) Libraries.Title = GameRenderer.EnsureMLibrary("Title");
+            if (Libraries.UI_32bit == null) Libraries.UI_32bit = GameRenderer.EnsureMLibrary("UI");
+            try
+            {
+                var main = new MainDialog { Parent = scene };
+                scene.MainDialog = main;
+                var inv = new InventoryDialog { Parent = scene };
+                scene.InventoryDialog = inv;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[gamesession] dialogs {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         static void EnsureUser(S.UserInformation ui)
@@ -344,6 +375,7 @@ namespace Crystal.Client.Rendering
             };
             MapObject.User = user;
             User = user;
+            if (GameScene.Scene != null) GameScene.User = user; // InventoryDialog.Process/RefreshInventory 数据源
             // 补旧客户端 Load() 的 RefreshStats：UserInformation 仅含当前 HP/MP，最大血量须从
             // 等级/装备/技能计算（Stats[Stat.HP]），供 HUD 血条分母；进图时 Scene 已由 MapInformation 建立。
             // try/catch 防 RefreshStats 内部（SetLibraries 图集等）异常传播卡死包处理主循环。

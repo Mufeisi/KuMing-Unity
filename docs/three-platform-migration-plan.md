@@ -69,9 +69,9 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例，tag 待补）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）。
 
-**当前在途（未提交）**：阶段8 第2项 增量1——移动背包按钮 + InventoryDialog 触控接入。见任务 `8-2-1`。
+**当前在途**：阶段8 第2项 增量2——背包面板交互（选中/详情/Tooltip/切页）。见任务 `8-2-2`。
 
 ---
 
@@ -92,9 +92,9 @@
 | ID | 任务 | 阶段 | 状态 | 依赖 | 预估 |
 | --- | --- | --- | --- | --- | --- |
 | X-1 | 模拟器触摸注入诊断脚本 | 横切 | ✅ | — | 0.5d |
-| X-2 | androidverify.ps1 冒烟化改造 | 横切 | 🔲 | X-1 | 0.5d |
-| 8-0 | 移动 UI 适配层（交互规范 + 移动输入契约） | 8·基础 | 🔲 | X-1, X-2 | 1d |
-| 8-2-1 | 移动背包按钮 + InventoryDialog 接入（在途收尾） | 8·第2项·增1 | 🔶 | 8-0 | 0.5~1d |
+| X-2 | androidverify.ps1 冒烟化改造 | 横切 | ✅ | X-1 | 0.5d |
+| 8-0 | 移动 UI 适配层（交互规范 + 移动输入契约） | 8·基础 | ✅ | X-1, X-2 | 1d |
+| 8-2-1 | 移动背包按钮 + InventoryDialog 接入（在途收尾） | 8·第2项·增1 | ✅ | 8-0 | 0.5~1d |
 | 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | 🔲 | 8-2-1 | 1~1.5d |
 | 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | 🔲 | 8-2-2 | 1d |
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | 🔲 | 8-2-2 | 0.5d |
@@ -187,7 +187,7 @@
 - ✅ 实证（2026-08-08）：三探针回归 PASS——`mobileuiverify` 7/7（翻转/最小触控/对话框命中/互斥路由/返回键/滚动冲突/输入契约时序）+ `joystickverify` 12/12 + `mobilehudverify` 7/7（提取不改行为，摇杆收 raw / HUD收 ui 的原生空间契约保持）+ CoreVerify 0 错误；同时修复 `TouchInputAdapter.SetMPoint` 未翻转 y 的镜像 bug（对话框鼠标事件路径同源缺陷，现统一走 `MobileUiAdapter.ToUiPoint`）。
 
 #### 8-2-1 移动背包按钮 + InventoryDialog 接入（在途收尾）
-状态：🔶 在途（代码已写未提交）｜预估：0.5~1d｜依赖：8-0
+状态：✅（2026-08-08 完成）｜预估：0.5~1d｜依赖：8-0
 
 - 目标：交付已完成的背包按钮增量，验收改为确定性探针，产出 commit。
 - 开发（已完成，复核即可）：
@@ -201,6 +201,7 @@
 - 验证：`Build/bagverify.ps1` PASS exit 0 + `tools/CoreVerify` 0 错误 + PC 回归 `net-bag.ps1` + 模拟器冒烟 `androidverify.ps1 -Smoke`（不设 gate）。
 - 提交：`feat(阶段8): 移动背包按钮 + InventoryDialog 触控接入` + 回归矩阵记录。
 - 验收：bagverify PASS + PC 回归 PASS + 冒烟截图含背包按钮 + 主会话确认无越界。完成后打 tag `stage8-bag-v1`。
+- ✅ 实证（2026-08-08）：探针 `bagverify` 8/8 PASS（命中 toggle/按钮外不触发/消费语义/Cancel 不 toggle/连点翻转/松手容错/屏幕重设重布局/开态跨重设保留）+ `mobilehudverify` 7/7（攻击按钮补 post-cancel 抑制断言）+ CoreVerify 0 错误 + PC 回归 `net-bag` PASS（bag ok exit 0）+ 模拟器冒烟 `androidverify -Smoke` PASS（chain 全 true coords=294,615，hud-scan atk=33136 hp=7124，shot1 含背包按钮：物理 (2096,210)-(2230,290) 中心 (2163,250) 与预期完全一致，10901 像素填充 99.7%）。修复真实 bug：Cancel 后残留 Up 会走松手容错误 toggle → `MobileBag`/`MobileHud` 加 `_canceled` 抑制位（设计对齐）。打 tag `stage8-bag-v1`。
 
 #### 8-2-2 背包面板交互：选中/详情/Tooltip/切页
 状态：🔲｜预估：1~1.5d｜依赖：8-2-1
