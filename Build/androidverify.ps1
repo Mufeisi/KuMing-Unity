@@ -250,7 +250,9 @@ $swipes = @(@(1040,360,240,360), @(240,360,1040,360), @(640,620,640,100), @(640,
 if ($chain["enter"] -and $coords.Count -ge 1) {
     foreach ($sw in $swipes) {
         & $adb shell input swipe $sw[0] $sw[1] $sw[2] $sw[3] 150 2>&1 | Out-Null
-        $swipeDeadline = (Get-Date).AddSeconds(12)
+        # 模拟器 swiftshader 帧率极低（0.2fps）：触摸事件要等下一帧（3-5s）才被 PollJoystick 处理、
+        # 再下一帧 Process 发送 C.Walk，到服务器回位置包又隔数秒。12s 窗口会截断，放宽到 30s。
+        $swipeDeadline = (Get-Date).AddSeconds(30)
         while ((Get-Date) -lt $swipeDeadline) {
             Start-Sleep -Seconds 3
             $userLines = (& $adb logcat -d -s Unity 2>&1 | Select-String -Pattern "\[mobile\] user@\d+,\d+" | ForEach-Object { $_.ToString() })

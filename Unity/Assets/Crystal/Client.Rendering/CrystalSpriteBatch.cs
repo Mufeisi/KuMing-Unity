@@ -138,7 +138,7 @@ namespace Crystal.Client.Rendering
                 // GL 立即模式提交：顶点已 CPU 烘焙 NDC，Begin 已设 GL 矩阵栈 identity → shader vert 直通 v.vertex.xy。
                 // 弃用 DrawMeshNow：实证其在相机 OnPostRender 上下文不输出（PC 屏幕全黑 vs RT 探针正常），
                 // GL 立即模式 RT/屏幕双路径均验证 OK（红色测试 quad）。
-                // Android 用 TRIANGLES：GL.QUADS 在该后端（默认 Vulkan）实证只渲染对角一半 → 地图规律黑三角花屏。
+                // Android 用 TRIANGLES：GL.QUADS 在该后端（默认 Vulkan）无此原语。
                 GL.Begin(GL.TRIANGLES);
                 for (int i = 0; i < list.Count; i++) EmitQuad(list[i], tex.width, tex.height);
                 GL.End();
@@ -161,12 +161,14 @@ namespace Crystal.Client.Rendering
             float vTop = 1f - q.src.y * invTh;
             float vBot = 1f - (q.src.y + q.src.height) * invTh;
             GL.Color(q.color);
-            // 每 quad 显式两个三角形（等价 GL_QUADS 规范拆分 v0v1v2+v2v3v0），Android Vulkan/ES 无 QUADS 原语。
+            // 每 quad 两个三角形须共享同一条对角线（TL-BR，即 v0v1v2+v0v2v3 规范拆分）。
+            // 实证 TL,TR,BL / BL,BR,TL 两三角形斜边为两条交叉对角线（\ 与 /），quad 中央
+            // 留下约 25% 菱形空洞未覆盖 → 透出 clear color → 地图规律黑三角/钻石花屏（PC/Android 均有）。
             GL.TexCoord2(u0, vTop); GL.Vertex3(nx0, ny0, 0f);   // TL
             GL.TexCoord2(u1, vTop); GL.Vertex3(nx1, ny0, 0f);   // TR
-            GL.TexCoord2(u0, vBot); GL.Vertex3(nx0, ny1, 0f);   // BL
-            GL.TexCoord2(u0, vBot); GL.Vertex3(nx0, ny1, 0f);   // BL
             GL.TexCoord2(u1, vBot); GL.Vertex3(nx1, ny1, 0f);   // BR
+            GL.TexCoord2(u1, vBot); GL.Vertex3(nx1, ny1, 0f);   // BR
+            GL.TexCoord2(u0, vBot); GL.Vertex3(nx0, ny1, 0f);   // BL
             GL.TexCoord2(u0, vTop); GL.Vertex3(nx0, ny0, 0f);   // TL
         }
 

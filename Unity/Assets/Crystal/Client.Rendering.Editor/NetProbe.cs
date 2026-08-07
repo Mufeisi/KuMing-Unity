@@ -426,6 +426,7 @@ namespace Crystal.Rendering.Editor
             Settings.Port = port;
             CMain.Time = 0;
             _didNewAccount = false;
+            CMain.LogImpl = UnityEngine.Debug.Log; // 还原旧客户端 CMain.Log（net-game.log 可见 keepalive 诊断）
 
             Network.OnPacket = OnPacket;
             Network.Connect();

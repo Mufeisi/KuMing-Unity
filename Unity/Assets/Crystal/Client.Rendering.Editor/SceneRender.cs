@@ -1227,6 +1227,7 @@ namespace Crystal.Rendering.Editor
             if (!File.Exists(man))
             {
                 Console.WriteLine($"  scene-render: WARN map manifest missing {man}");
+                _mapLibs[rel] = null; // 负缓存：缺段不每帧重查+刷日志
                 return null;
             }
             lib = AtlasLibrary.Load(man);

@@ -22,6 +22,8 @@ namespace Client.MirNetwork
         public static long KeepAlivesSent;
 
         private static int _lastKaReal;
+        private static Timer _kaTimer;      // keepalive 独立心跳：主循环帧率极低（模拟器 0.2fps）时仍严格按时发送
+        private static int _lastKaLogReal;  // keepalive 状态日志节流（真实时间，防 ThreadPool 线程打 Unity 日志）
 
         public static Action<Packet> OnPacket;
 
@@ -78,6 +80,12 @@ namespace Client.MirNetwork
 
                 TimeOutTime = CMain.Time + Settings.TimeOut;
                 TimeConnected = CMain.Time;
+
+                // keepalive 心跳与主循环解耦：Unity 模拟器 swiftshader 帧率可低至 0.2fps，Process() 调用稀疏，
+                // 若 keepalive 由主循环驱动，发送间隔波动会超过服务器 10s 超时窗口导致连接被踢（moved=False 根因）。
+                // 独立 Timer 严格按真实时间发送，且仅 TCP 已连时发送（不碰 Unity API，ThreadPool 线程安全）。
+                _kaTimer?.Dispose();
+                _kaTimer = new Timer(_ => SendKeepAlive(), null, Settings.TimeOut, Settings.TimeOut);
 
                 BeginReceive();
             }
@@ -172,8 +180,29 @@ namespace Client.MirNetwork
             { }
         }
 
+        // keepalive 心跳：ThreadPool 线程执行（不访问 Unity API）。仅在 TCP 已连时发送；
+        // 握手前也发（服务器任意包均重置超时），与旧主循环行为一致。发送失败静默——
+        // 连接异常由主循环 Process() 的断开检测/重连逻辑接管。
+        private static void SendKeepAlive()
+        {
+            try
+            {
+                var c = _client;
+                if (c == null || !c.Connected) return;
+                byte[] data = new C.KeepAlive().GetPacketBytes().ToArray();
+                c.Client.BeginSend(data, 0, data.Length, SocketFlags.None, SendData, null);
+                KeepAlivesSent++;
+                CMain.BytesSent += data.Length;
+                _lastKaReal = Environment.TickCount;
+            }
+            catch
+            { }
+        }
+
         public static void Disconnect()
         {
+            _kaTimer?.Dispose();
+            _kaTimer = null;
             if (_client == null) return;
 
             _client?.Close();
@@ -227,16 +256,13 @@ namespace Client.MirNetwork
                 OnPacket?.Invoke(p);
             }
 
-            // keepalive 按真实时间驱动（Environment.TickCount），与模拟时间 CMain.Time 解耦：
-            // batchmode 主循环被后台任务抢占时 Process() 调用会稀疏、模拟时间刻度失真，
-            // 按 CMain.Time 判定会错过服务器 10s 超时窗口。真实时间判定保证只要
-            // Process() 实际调用间隔小于服务器窗口，keepalive 即严格按时发送。
+            // keepalive 由独立 Timer 驱动（见 SendKeepAlive），主循环仅做状态日志（真实时间节流，
+            // 帧率低时 Process() 调用稀疏也能在 60s 窗口内至少打印一次，供 androidverify 断连诊断）。
             int nowMs = Environment.TickCount;
-            if (nowMs - _lastKaReal >= Settings.TimeOut && _sendList != null && _sendList.IsEmpty)
+            if (nowMs - _lastKaLogReal >= 60000)
             {
-                _sendList.Enqueue(new C.KeepAlive());
-                KeepAlivesSent++;
-                _lastKaReal = nowMs;
+                _lastKaLogReal = nowMs;
+                CMain.Log($"[network] keepalive heartbeat ka={KeepAlivesSent} lastMs={_lastKaReal} sendList={(_sendList == null ? 0 : _sendList.Count)}");
             }
 
             if (_sendList == null || _sendList.IsEmpty) return;

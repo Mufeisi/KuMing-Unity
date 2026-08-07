@@ -29,6 +29,7 @@ namespace Crystal.Client.Rendering
         bool _booted;
         bool _renderReady;
         bool _hudTexReady;
+        float _lastFpsLogAt; // 帧率诊断日志节流（模拟器 swiftshader 帧率低，确认 Unity 主循环活动）
         long _lastMoveAt;
         long _lastStepAt;   // 最近一次发出移动包时刻（服务器 _stepCounter>0 才允许 Run，模拟助跑）
         long _lastPosLogAt;
@@ -42,6 +43,7 @@ namespace Crystal.Client.Rendering
         {
             if (Application.platform != RuntimePlatform.Android) { enabled = false; return; }
             Application.targetFrameRate = 60;
+            CMain.LogImpl = Debug.Log; // 还原旧客户端 CMain.Log 到 Unity 日志（Android logcat 可见）
             // 模拟器（swiftshader 软渲染）2400x1080 全屏负载过高 → 帧率<5，触摸 Began 帧被合并丢失
             // （swipe 移动失效根因）。降 backbuffer 分辨率换取帧率；真机 GPU 非 SwiftShader 保持原生。
             bool emulator = SystemInfo.graphicsDeviceName.Contains("SwiftShader");
@@ -103,6 +105,12 @@ namespace Crystal.Client.Rendering
         void Update()
         {
             if (!_booted) return;
+            // 帧率/触摸诊断日志（真时间节流）：确认主循环活动与触摸事件是否到达 Unity
+            if (Time.unscaledTime - _lastFpsLogAt > 5f)
+            {
+                _lastFpsLogAt = Time.unscaledTime;
+                Debug.Log($"[mobile] fps={1f / Mathf.Max(Time.unscaledDeltaTime, 0.0001f):F1} touch={Input.touchCount}");
+            }
             PollJoystick();
             GameRuntime.TickLogic();
             if (!_joystick.Active) _combat.Tick(); // 手动摇杆优先：拖动时暂停自动战斗
