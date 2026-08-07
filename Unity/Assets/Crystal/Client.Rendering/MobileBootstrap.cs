@@ -79,10 +79,11 @@ namespace Crystal.Client.Rendering
             Settings.ScreenHeight = GameRuntime.ScreenH;
             _bag.OnToggle = ToggleBag;
             // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
+            // Hide()（增量2）顺带清选中+Tooltip。
             MobileUiAdapter.BackHandler = () =>
             {
                 var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
-                if (inv != null && inv.Visible) { inv.Visible = false; return true; }
+                if (inv != null && inv.Visible) { inv.Hide(); return true; }
                 return false;
             };
 
@@ -340,7 +341,7 @@ namespace Crystal.Client.Rendering
                 }
                 else
                 {
-                    inv.Visible = false;
+                    inv.Hide(); // Hide()（增量2）顺带清选中+Tooltip
                 }
             }
             catch (Exception ex)

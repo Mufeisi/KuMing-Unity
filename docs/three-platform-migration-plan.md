@@ -69,9 +69,9 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）。
 
-**当前在途**：阶段8 第2项 增量2——背包面板交互（选中/详情/Tooltip/切页）。见任务 `8-2-2`。
+**当前在途**：阶段8 第2项 增量3——装备穿戴（点格→EquipItem→角色外观）。见任务 `8-2-3`。
 
 ---
 
@@ -95,7 +95,7 @@
 | X-2 | androidverify.ps1 冒烟化改造 | 横切 | ✅ | X-1 | 0.5d |
 | 8-0 | 移动 UI 适配层（交互规范 + 移动输入契约） | 8·基础 | ✅ | X-1, X-2 | 1d |
 | 8-2-1 | 移动背包按钮 + InventoryDialog 接入（在途收尾） | 8·第2项·增1 | ✅ | 8-0 | 0.5~1d |
-| 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | 🔲 | 8-2-1 | 1~1.5d |
+| 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | ✅ | 8-2-1 | 1~1.5d |
 | 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | 🔲 | 8-2-2 | 1d |
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | 🔲 | 8-2-2 | 0.5d |
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | 🔲 | 8-2-2 | 1d |
@@ -204,14 +204,16 @@
 - ✅ 实证（2026-08-08）：探针 `bagverify` 8/8 PASS（命中 toggle/按钮外不触发/消费语义/Cancel 不 toggle/连点翻转/松手容错/屏幕重设重布局/开态跨重设保留）+ `mobilehudverify` 7/7（攻击按钮补 post-cancel 抑制断言）+ CoreVerify 0 错误 + PC 回归 `net-bag` PASS（bag ok exit 0）+ 模拟器冒烟 `androidverify -Smoke` PASS（chain 全 true coords=294,615，hud-scan atk=33136 hp=7124，shot1 含背包按钮：物理 (2096,210)-(2230,290) 中心 (2163,250) 与预期完全一致，10901 像素填充 99.7%）。修复真实 bug：Cancel 后残留 Up 会走松手容错误 toggle → `MobileBag`/`MobileHud` 加 `_canceled` 抑制位（设计对齐）。打 tag `stage8-bag-v1`。
 
 #### 8-2-2 背包面板交互：选中/详情/Tooltip/切页
-状态：🔲｜预估：1~1.5d｜依赖：8-2-1
+状态：✅｜预估：1~1.5d｜依赖：8-2-1｜完成：2026-08-08
 
 - 目标：背包面板内可点选格子显示详情/Tooltip，可切 Bag/Equip/Storage 页。
-- 开发：`MirItemCell` 触控命中（走 8-0 适配层）；点格 → `GameScene.SelectedCell` + `ItemToolTip` 显示；切页触控分发；滚动（MirControl.Scrollable 或分页按钮）。
-- 测试：`baginteractverify` 探针（点格命中/越界忽略/切页状态/关闭）；PC `net-bag.ps1` 回归。
-- 验证：探针 PASS + CoreVerify 0 错误 + PC 回归 + 冒烟一次 + 8-P 采样。
+- 开发：`MirItemCell.OnMouseClick` 点格选中（有物品→`SelectedCell=this` 边框高亮+图标置灰；空格→清本网格选中，跨网格守卫）；`InventoryDialog.ClearSelection` 选中生命周期（Reset 切页/Hide 关闭 清选中+Tooltip+HoverItem）；`MobileBootstrap` 返回键/关背包走 `Hide()`。切页触控走既有 Mir 鼠标链（TouchInputAdapter 同链路：Move 更新 hover → Down 置 ActiveControl → Up+Click）。
+- 测试：`baginteractverify` 探针 7/7（点格命中+Tooltip/空格取消/越界忽略/切页状态/切页清选中/关闭清选中+Tooltip 释放/任务页）。
 - 提交：`feat(阶段8): 背包面板触控交互（选中/详情/切页）`。
 - 验收：真机/模拟器点开背包→点格子→出详情→切页→关闭，全程无摇杆误触发。
+
+- ✅ 实证（2026-08-08）：探针 `baginteractverify` 7/7 PASS（点格选中+Tooltip/空格取消/越界忽略/切页状态/切页清选中/关闭清选中/任务页，exit 0）+ 回归 `bagverify` 8/8 PASS + CoreVerify 0 错误 + PC 回归 `net-bag` PASS（bag ok exit 0）。
+- 🔧 探针关键修复（batchmode 无库数据陷阱）：`MirImageControl.Size` getter 在 `AutoSize&&Library!=null&&Index>=0` 时返回 `Library.GetTrueSize(Index)=(0,0)`，吞掉 ctor 显式尺寸 → 面板/按钮 `Size=0` → `IsMouseOver` 永不命中。探针统一关 `AutoSize` 回落 base.Size（面板 340x240 覆盖 CloseButton 全宽 289..329）。数组替换陷阱：`_user.Inventory = new UserItem[56]` 会丢原数组物品，case5/6 重选前需保格 `Inventory[6]=_sword`。
 
 #### 8-2-3 装备穿戴
 状态：🔲｜预估：1d｜依赖：8-2-2

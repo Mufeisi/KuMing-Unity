@@ -244,6 +244,18 @@ namespace Client.MirControls
             GameScene.HoverItem = null;
         }
 
+        // 阶段8 第2项 增量2：点格选中（触控/鼠标统一入口）。有物品→SelectedCell=this（边框高亮+图标置灰，
+        // Border/DrawControl 既有渲染消费）；空格→清除本网格选中（跨网格守卫，装备/仓库等不误清）。
+        // 拖拽移动/使用/删除（旧客户端 OnMouseClick 2639 行主体）属后续增量。
+        public override void OnMouseClick(MouseEventArgs e)
+        {
+            if (Item != null)
+                GameScene.SelectedCell = this;
+            else if (GameScene.SelectedCell != null && GameScene.SelectedCell.GridType == GridType)
+                GameScene.SelectedCell = null;
+            base.OnMouseClick(e);
+        }
+
         private void CreateDisposeLabel()
         {
             if (Item == null && ShadowItem == null)

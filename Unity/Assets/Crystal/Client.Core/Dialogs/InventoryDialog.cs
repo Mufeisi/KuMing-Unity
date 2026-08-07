@@ -13,6 +13,8 @@ namespace Client.MirScenes.Dialogs
     // WeightBar_BeforeDraw/切页可见性（Reset/RefreshInventory/RefreshInventory2）逐字保留。
     // 裁剪的交互（属后续迭代）：删除模式（ToggleDeleteMode/PromptDelete/SendDeleteItem）、
     // 扩包 AddButton 消息框/网络、BeltDialog 腰带栏（不在迭代包2 范围）。
+    // 增量2（2026-08-08）：点格选中生命周期——MirItemCell.OnMouseClick 设 SelectedCell；切页/关闭
+    // （Reset/Hide）清选中 + Tooltip（DisposeItemLabel + HoverItem）。
     public sealed class InventoryDialog : MirImageControl
     {
         public MirImageControl WeightBar;
@@ -231,6 +233,22 @@ namespace Client.MirScenes.Dialogs
             }
 
             AddButton.Visible = false;
+
+            ClearSelection();
+        }
+
+        // 阶段8 第2项 增量2 选中生命周期：切页/关闭清选中 + Tooltip（防跨页残留）。
+        void ClearSelection()
+        {
+            GameScene.SelectedCell = null;
+            if (GameScene.Scene != null) GameScene.Scene.DisposeItemLabel();
+            GameScene.HoverItem = null;
+        }
+
+        public override void Hide()
+        {
+            ClearSelection();
+            base.Hide();
         }
 
         public void RefreshInventory()
