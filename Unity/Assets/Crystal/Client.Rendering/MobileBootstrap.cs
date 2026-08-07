@@ -28,12 +28,15 @@ namespace Crystal.Client.Rendering
 
         bool _booted;
         bool _renderReady;
+        bool _hudTexReady;
         long _lastMoveAt;
         long _lastStepAt;   // 最近一次发出移动包时刻（服务器 _stepCounter>0 才允许 Run，模拟助跑）
         long _lastPosLogAt;
         string _lastLoggedPos;
         readonly TouchJoystick _joystick = new TouchJoystick();
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
+        readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
+        Texture2D _attackTex, _hpTex, _mpTex;               // HUD 纹理（圆盘/满条，惰性生成一次）
 
         void Start()
         {
@@ -119,6 +122,69 @@ namespace Crystal.Client.Rendering
         {
             if (!_booted) return;
             GameRuntime.RenderScreen();
+            RenderHud();
+        }
+
+        // 战斗 HUD（增量3）：场景渲染后开第二个批次画攻击按钮+血条。移动摇杆为触控优先通道，
+        // HUD 按钮与摇杆共存（左下/右下不重叠；同 TouchJoystick 纯逻辑层模式，OnTouch 喂入）。
+        void RenderHud()
+        {
+            if (GameSession.State != GameSessionState.InGame) return;
+            if (!_hudTexReady) EnsureHudTextures();
+            SyncHudStats();
+            if (_hud.ScreenW != GameRuntime.ScreenW || _hud.ScreenH != GameRuntime.ScreenH)
+                _hud.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+
+            CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
+            CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
+            _hud.Render(_attackTex, _hpTex, _mpTex);
+            CrystalSpriteBatch.End();
+        }
+
+        // 血条数据：HP/MP 由 HealthChanged 实时同步（GameSession），MaxHP/MP 来自进图 UserInformation 的 Stats。
+        void SyncHudStats()
+        {
+            var u = GameSession.User;
+            if (u == null) return;
+            _hud.Hp = u.HP;
+            _hud.Mp = u.MP;
+            _hud.MaxHp = u.Stats[Stat.HP];
+            _hud.MaxMp = u.Stats[Stat.MP];
+        }
+
+        // HUD 纹理惰性生成：攻击按钮=程序化圆盘（直径=2*AttackRadius，点过滤像素风），
+        // 血条=满条纯色（Render 按 HpRatio 裁剪 src）。全屏幕不透明按钮区外透明。
+        void EnsureHudTextures()
+        {
+            _hudTexReady = true;
+            int d = (int)(MobileHud.AttackRadius * 2f);
+            _attackTex = new Texture2D(d, d, TextureFormat.RGBA32, false);
+            var px = new Color32[d * d];
+            float r = MobileHud.AttackRadius;
+            for (int y = 0; y < d; y++)
+                for (int x = 0; x < d; x++)
+                {
+                    float dist = Mathf.Sqrt((x + 0.5f - r) * (x + 0.5f - r) + (y + 0.5f - r) * (y + 0.5f - r));
+                    px[y * d + x] = dist <= r ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0);
+                }
+            _attackTex.SetPixels32(px);
+            _attackTex.Apply();
+            _attackTex.filterMode = FilterMode.Point;
+
+            int bw = (int)MobileHud.HpBarSize.x, bh = (int)MobileHud.HpBarSize.y;
+            _hpTex = SolidTexture(bw, bh);
+            _mpTex = SolidTexture(bw, bh);
+        }
+
+        static Texture2D SolidTexture(int w, int h)
+        {
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var px = new Color32[w * h];
+            for (int i = 0; i < px.Length; i++) px[i] = new Color32(255, 255, 255, 255);
+            t.SetPixels32(px);
+            t.Apply();
+            t.filterMode = FilterMode.Point;
+            return t;
         }
 
         void OnApplicationQuit()
@@ -146,6 +212,7 @@ namespace Crystal.Client.Rendering
                     _ => JoystickPhase.Move, // Stationary：保持当前方向
                 };
                 _joystick.OnTouch(t.fingerId, phase, t.position);
+                _hud.OnTouch(t.fingerId, phase, t.position); // 攻击按钮独立于摇杆（右下区），Down 命中才激活
             }
 
             bool moving = _joystick.Active && _joystick.Moving;

@@ -344,6 +344,18 @@ namespace Crystal.Client.Rendering
             };
             MapObject.User = user;
             User = user;
+            // 补旧客户端 Load() 的 RefreshStats：UserInformation 仅含当前 HP/MP，最大血量须从
+            // 等级/装备/技能计算（Stats[Stat.HP]），供 HUD 血条分母；进图时 Scene 已由 MapInformation 建立。
+            // try/catch 防 RefreshStats 内部（SetLibraries 图集等）异常传播卡死包处理主循环。
+            try
+            {
+                if (GameScene.Scene != null) user.RefreshStats();
+                else Debug.LogWarning("[gamesession] user-stats skipped (scene null)");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[gamesession] user-stats {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         static void Error(string msg)

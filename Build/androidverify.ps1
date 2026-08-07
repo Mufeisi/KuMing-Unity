@@ -214,6 +214,34 @@ if ($chain["user"]) {
     $p = Start-Process -FilePath $adb -ArgumentList @("exec-out", "screencap", "-p") -RedirectStandardOutput $shot1 -NoNewWindow -Wait
     $sz1 = if (Test-Path $shot1) { (Get-Item $shot1).Length } else { 0 }
 }
+# 7.5 HUD 断言（增量3）：截图 1 扫描战斗 HUD 元素——右下攻击按钮橙圆盘 + 左上 HP 红条。
+# 模拟器降级 1280x720 逻辑 → 物理 2400x1080 全屏拉伸（1.875x / 1.5y）。攻击中心逻辑 (1190,560) →
+# 物理 (2231,840) r60 逻辑→约 (112,90) 物理；HP 条逻辑 (20,20)-(200,34) → 物理 (37,30)-(374,51)。
+# 区域放宽防拉伸/抖动偏差，只判橙红主色（HUD 是画面唯一大橙圆/红条，误报低）。
+$hudOk = $false
+if ($sz1 -gt 10000) {
+    $hudPy = @"
+from PIL import Image
+im = Image.open(r'$shot1').convert('RGB')
+px = im.load()
+atk = 0
+for y in range(700, 980):
+    for x in range(2070, 2400):
+        r,g,b = px[x,y]
+        if r > 150 and b < 130 and (r - b) > 60: atk += 1
+hp = 0
+for y in range(15, 95):
+    for x in range(15, 400):
+        r,g,b = px[x,y]
+        if r > 140 and g < 110 and b < 110: hp += 1
+print('atk=%d hp=%d' % (atk, hp))
+"@
+    $hudRaw = $hudPy | python -
+    Write-Host "  hud-scan: $hudRaw"
+    if ($hudRaw -match "atk=(\d+) hp=(\d+)") {
+        $hudOk = ([int]$Matches[1] -gt 300) -and ([int]$Matches[2] -gt 100)
+    }
+}
 # 8. 滑动移动（摇杆松手补步 → C.Walk 一格）；等位置变化。
 # 多方向重试：西→东→北→南，任一方向位置变化即 PASS（出生点可能邻墙，单方向东滑会撞墙）。
 # 坐标按模拟器降级后 1280x720 横屏（中心 640,360；swipe 起点即摇杆原点，位移 800px>奔跑阈值）。
@@ -247,6 +275,6 @@ if ($sz1 -gt 10000) {
     $raw = python -c "import sys; from PIL import Image; im=Image.open(r'$shot1').convert('RGB'); print(len(im.getcolors(maxcolors=10**7)) if im.getcolors(maxcolors=10**7) else 99999)"
     [int]::TryParse(("$raw").Trim(), [ref]$colCount) | Out-Null
 }
-$ok = ($chain.Values -notcontains $false) -and ($moved) -and ($colCount -gt 50)
-Write-Host "  shot1=$sz1 colors=$colCount"
+$ok = ($chain.Values -notcontains $false) -and ($moved) -and ($colCount -gt 50) -and $hudOk
+Write-Host "  shot1=$sz1 colors=$colCount hud=$hudOk"
 if ($ok) { Write-Host "PASS: Android login->enter->render->move ok" ; exit 0 } else { Write-Host "FAIL"; exit 1 }
