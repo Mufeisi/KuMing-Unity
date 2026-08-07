@@ -1,5 +1,9 @@
 # Crystal 客户端 MonoGame 迁移总体计划（个人全职版）
 
+> ⚠️ **本文档已废弃（2026-08-07）**：原 MonoGame 迁移方案已被 **Unity 三端方案**取代。
+> 引擎决策、阶段划分、任务状态一律以 `docs/three-platform-migration-plan.md` 为准；
+> 已完成工作以 `docs/migration-status.md` 为准。本文档仅作历史参考。
+
 > 文档版本：1.0
 > 编制日期：2026-08-03
 > 编制依据：对 `Crystal-master` 仓库 Client 代码的逐文件审查 + 既有 `docs/monogame-client-migration-prd.md`（2026-07-29）的承接

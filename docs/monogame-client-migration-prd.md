@@ -1,5 +1,9 @@
 # Crystal 客户端迁移 MonoGame 产品需求与开发实施文档（PRD）
 
+> ⚠️ **本文档已废弃（2026-08-07）**：原 MonoGame 迁移方案已被 **Unity 三端方案**取代。
+> 引擎决策、阶段划分、任务状态一律以 `docs/three-platform-migration-plan.md` 为准；
+> 已完成工作以 `docs/migration-status.md` 为准。本文档仅作历史参考（还原率定义、指标、风险清单仍有价值）。
+
 > 文档版本：1.0  
 > 编制日期：2026-07-29  
 > 目标：PC 客户端可观测行为 100% 还原；Android/iOS 核心体验 80% 还原  
