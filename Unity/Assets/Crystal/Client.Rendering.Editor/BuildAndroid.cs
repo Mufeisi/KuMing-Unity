@@ -32,7 +32,7 @@ namespace Crystal.Rendering.Editor
                 PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
                 Console.WriteLine($"[build-android] player-settings company=Mir2 product=Crystal bundle={BundleId} minSdk=26 dir=LandscapeLeft");
 
-                // 2. 最小启动场景：幂等——不存在则新建空场景，存在则打开；确保挂载 AppLifecycle（Android 生命周期骨架）。
+                // 2. 最小启动场景：幂等——不存在则新建空场景，存在则打开；确保挂载 AppLifecycle + TouchInput + 主相机（挂 MobileBootstrap）。
                 string sceneAbs = Path.GetFullPath(ScenePath);
                 var scene = File.Exists(sceneAbs)
                     ? EditorSceneManager.OpenScene(sceneAbs, OpenSceneMode.Single)
@@ -40,8 +40,13 @@ namespace Crystal.Rendering.Editor
                 if (!File.Exists(sceneAbs)) Directory.CreateDirectory(Path.GetDirectoryName(sceneAbs));
                 EnsureAppLifecycle(scene);
                 EnsureTouchInput(scene);
+                EnsureCamera(scene);
                 EditorSceneManager.SaveScene(scene, sceneAbs);
-                Console.WriteLine($"[build-android] scene {ScenePath} appLifecycle=true touchInput=true");
+                Console.WriteLine($"[build-android] scene {ScenePath} appLifecycle=true touchInput=true camera=true");
+
+                // 2b. Android 连接配置：静态字段初始化值在 Player 构建时固化，Editor 运行时赋值不进产物，
+                // 故按 env 重写 MobileConfig.cs（生成源）再构建；env 缺省回落提交默认值。
+                WriteMobileConfig();
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
 
                 // 3. 切 Android 目标并构建。
@@ -84,6 +89,67 @@ namespace Crystal.Rendering.Editor
                 if (root.GetComponent<TouchInputAdapter>() != null) return;
             var go = new GameObject("TouchInput");
             go.AddComponent<TouchInputAdapter>();
+        }
+
+        // 主相机：ClearFlags=SolidColor（清屏色为背景，屏幕模式 CrystalSpriteBatch.Clear 跳过 GL.Clear），
+        // MobileBootstrap 挂其上以触发 OnPostRender（GL 渲染须在相机渲染之后，否则被清屏覆盖）。与 BuildPC.EnsureCamera 同构。
+        static void EnsureCamera(Scene scene)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                var cam = root.GetComponent<Camera>();
+                if (cam != null) { EnsureMobileBootstrap(root); return; }
+            }
+            var go = new GameObject("Main Camera");
+            go.tag = "MainCamera";
+            var camera = go.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 1f);
+            EnsureMobileBootstrap(go);
+        }
+
+        // 幂等挂载 MobileBootstrap（Android 引导壳，阶段8 前置）。
+        static void EnsureMobileBootstrap(GameObject cameraRoot)
+        {
+            if (cameraRoot.GetComponent<MobileBootstrap>() == null)
+                cameraRoot.AddComponent<MobileBootstrap>();
+        }
+
+        // 按 env 重写 MobileConfig.cs（Android 连接配置生成源）；env 缺省回落提交默认值，内容不变则 git 无脏。
+        static void WriteMobileConfig()
+        {
+            string host = EnvOr("CRYSTAL_NET_HOST", "10.0.2.2");
+            int port = IntEnvOr("CRYSTAL_NET_PORT", 7000);
+            string id = EnvOr("CRYSTAL_LOGIN_ID", "pcplayer");
+            string pw = EnvOr("CRYSTAL_LOGIN_PW", "pcplayer");
+            string path = Path.Combine("Assets", "Crystal", "Client.Rendering", "MobileConfig.cs");
+            File.WriteAllText(path,
+                "namespace Crystal.Client.Rendering\n" +
+                "{\n" +
+                "    // Android 连接配置（生成源）：BuildAndroid.Run 每次构建按 env 重写（CRYSTAL_NET_HOST/PORT/LOGIN_ID/LOGIN_PW），\n" +
+                "    // env 缺省时回落到此提交值（= androidverify 默认：模拟器 10.0.2.2 → 宿主服务端）。\n" +
+                "    // 静态字段的初始化值在 Player 构建时编译固化，Editor 运行时赋值不进产物，故走生成源注入。\n" +
+                "    static class MobileConfig\n" +
+                "    {\n" +
+                $"        public const string NetHost = \"{host}\";\n" +
+                $"        public const int NetPort = {port};\n" +
+                $"        public const string LoginId = \"{id}\";\n" +
+                $"        public const string LoginPw = \"{pw}\";\n" +
+                "    }\n" +
+                "}\n");
+            Console.WriteLine($"[build-android] config host={host} port={port} login={id}");
+        }
+
+        static string EnvOr(string name, string def)
+        {
+            string v = Environment.GetEnvironmentVariable(name);
+            return string.IsNullOrEmpty(v) ? def : v;
+        }
+
+        static int IntEnvOr(string name, int def)
+        {
+            string v = Environment.GetEnvironmentVariable(name);
+            return int.TryParse(v, out int r) ? r : def;
         }
     }
 }

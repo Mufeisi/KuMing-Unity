@@ -195,7 +195,10 @@ namespace Crystal.Client.Rendering
 
         static void ObjectMonster(S.ObjectMonster p)
         {
-            EnsureObjectLib((ushort)p.Image, Libraries.Monsters, $"Monster/{(ushort)p.Image:D3}");
+            ushort img = (ushort)p.Image;
+            EnsureObjectLib(img, Libraries.Monsters, $"Monster/{img:D3}");
+            // 无图集（区域子集裁剪未含该怪物段，Android 常见）：跳过渲染，不抛 NRE 刷屏
+            if (img >= Libraries.Monsters.Length || Libraries.Monsters[img] == null) return;
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is MonsterObject mob)
             {
                 mob.Load(p, true);
@@ -209,6 +212,7 @@ namespace Crystal.Client.Rendering
         static void ObjectNpc(S.ObjectNPC p)
         {
             EnsureObjectLib(p.Image, Libraries.NPCs, $"NPC/{p.Image:D2}");
+            if (p.Image >= Libraries.NPCs.Length || Libraries.NPCs[p.Image] == null) return;
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is NPCObject npo)
             {
                 npo.Load(p);

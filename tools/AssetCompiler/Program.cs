@@ -30,6 +30,7 @@ static class Program
             "png-dump" => Golden.PngDump(args),
             "png-scan" => Golden.PngScan(args),
             "manifest" => Manifest.Run(args),
+            "subset" => Subset.Run(args),
             _ => Usage(args[0]),
         };
     }
@@ -48,7 +49,7 @@ static class Program
         return 2;
     }
 
-    static string Arg(string[] args, string name, string def = null)
+    internal static string Arg(string[] args, string name, string def = null)
     {
         for (int i = 0; i < args.Length - 1; i++)
             if (args[i] == name) return args[i + 1];
@@ -284,7 +285,7 @@ static class Program
     }
 
     // ---------- 打包（shelf，高先降序，超页图片独占一页） ----------
-    static (List<PageInfo>, PackedRect[]) Pack(ImgMeta[] metas, int pageSize, List<string> anomalies)
+    internal static (List<PageInfo>, PackedRect[]) Pack(ImgMeta[] metas, int pageSize, List<string> anomalies)
     {
         int n = metas.Length;
         var rects = new PackedRect[n];
@@ -377,7 +378,7 @@ static class Program
         catch { return null; }
     }
 
-    static void Blit(byte[] page, int pageW, int x, int y, int w, int h, byte[] rgba)
+    internal static void Blit(byte[] page, int pageW, int x, int y, int w, int h, byte[] rgba)
     {
         for (int row = 0; row < h; row++)
             Buffer.BlockCopy(rgba, row * w * 4, page, ((y + row) * pageW + x) * 4, w * 4);
@@ -516,7 +517,7 @@ static class Program
         WriteBE(bw, crc ^ 0xFFFFFFFF);
     }
 
-    static void WritePng(string path, int w, int h, byte[] rgba)
+    internal static void WritePng(string path, int w, int h, byte[] rgba)
     {
         using var fs = File.Create(path);
         using var bw = new BinaryWriter(fs);
@@ -609,7 +610,7 @@ static class Program
         public byte[] MaskRgba;
     }
 
-    readonly struct PackedRect
+    internal readonly struct PackedRect
     {
         public readonly int Page, X, Y;
         public PackedRect(int page, int x, int y) { Page = page; X = x; Y = y; }

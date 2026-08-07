@@ -20,6 +20,7 @@ namespace Crystal.Client.Rendering
 
         public static int ScreenW = 1280, ScreenH = 720;
         public static int LastObjectDraws; // 探针断言：本帧实际绘制对象数
+        public static int FramesRendered;  // 渲染完成帧数（render-ready 判据：首帧完成即渲染就绪）
 
         // 探针路径：逻辑 + 渲染到显式 RT（batchmode 无相机，不存在相机清屏覆盖问题）。
         public static void Tick(RenderTexture target)
@@ -80,6 +81,7 @@ namespace Crystal.Client.Rendering
             }
             LastObjectDraws = drawn;
             CrystalSpriteBatch.End();
+            FramesRendered++;
         }
 
         // 跨帧缓存 libIndex 数组：同地图 cells 不变，避免每帧重建（G2 性能教训）。
