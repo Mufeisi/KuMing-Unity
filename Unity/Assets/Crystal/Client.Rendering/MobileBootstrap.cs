@@ -30,6 +30,7 @@ namespace Crystal.Client.Rendering
         bool _renderReady;
         bool _hudTexReady;
         float _lastFpsLogAt; // 帧率诊断日志节流（模拟器 swiftshader 帧率低，确认 Unity 主循环活动）
+        float _lastTouchDiagAt; // 触摸诊断日志节流（坐标系实证：backbuffer vs 物理）
         long _lastMoveAt;
         long _lastStepAt;   // 最近一次发出移动包时刻（服务器 _stepCounter>0 才允许 Run，模拟助跑）
         long _lastPosLogAt;
@@ -37,7 +38,8 @@ namespace Crystal.Client.Rendering
         readonly TouchJoystick _joystick = new TouchJoystick();
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
-        Texture2D _attackTex, _hpTex, _mpTex;               // HUD 纹理（圆盘/满条，惰性生成一次）
+        readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
+        Texture2D _attackTex, _hpTex, _mpTex, _bagTex;      // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
         {
@@ -65,6 +67,24 @@ namespace Crystal.Client.Rendering
                 GameRuntime.ScreenW = Screen.width;
                 GameRuntime.ScreenH = Screen.height;
             }
+            // 适配层尺寸同步（8-0）：Start 即对齐，消除与 TouchInputAdapter 的 Update 排序依赖。
+            MobileUiAdapter.ScreenW = GameRuntime.ScreenW;
+            MobileUiAdapter.ScreenH = GameRuntime.ScreenH;
+            // 文本桥（R8 管线，阶段8 第2项）：TextRenderer seam 静态委托 → Unity 动态字体字形，
+            // 主循环/对话框标签绘制依赖（MirLabel.DrawText 未装实现时是 no-op）。PreWarm 预热
+            // ASCII 字形集，WarmTree 批前预构建在 RenderHud 每帧调用（缓存命中，仅首帧合成）。
+            UiText.Install();
+            UiText.PreWarm(8);
+            Settings.ScreenWidth = GameRuntime.ScreenW;  // MainDialog.Location 依赖（旧坐标系：左上原点）
+            Settings.ScreenHeight = GameRuntime.ScreenH;
+            _bag.OnToggle = ToggleBag;
+            // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
+            MobileUiAdapter.BackHandler = () =>
+            {
+                var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
+                if (inv != null && inv.Visible) { inv.Visible = false; return true; }
+                return false;
+            };
 
             string host = Env("CRYSTAL_NET_HOST", NetHost);
             int port = GetInt("CRYSTAL_NET_PORT", NetPort);
@@ -105,6 +125,10 @@ namespace Crystal.Client.Rendering
         void Update()
         {
             if (!_booted) return;
+            // 适配层尺寸同步（8-0）+ 返回键轮询（Android Back → 关顶层对话框）。
+            MobileUiAdapter.ScreenW = GameRuntime.ScreenW;
+            MobileUiAdapter.ScreenH = GameRuntime.ScreenH;
+            MobileUiAdapter.PollBackKey();
             // 帧率/触摸诊断日志（真时间节流）：确认主循环活动与触摸事件是否到达 Unity
             if (Time.unscaledTime - _lastFpsLogAt > 5f)
             {
@@ -113,7 +137,9 @@ namespace Crystal.Client.Rendering
             }
             PollJoystick();
             GameRuntime.TickLogic();
-            if (!_joystick.Active) _combat.Tick(); // 手动摇杆优先：拖动时暂停自动战斗
+            // 手动摇杆优先：拖动时暂停自动战斗；背包面板打开期间同样暂停（面板操作不被打断）。
+            bool uiOpen = GameScene.Scene?.InventoryDialog?.Visible == true;
+            if (!_joystick.Active && !uiOpen) _combat.Tick();
             LogPosition();
             // 渲染就绪钩子：首帧 BuildLibIndex 全图扫描慢（模拟器 swiftshader 约 2.6s），
             // androidverify 等此日志后再截图/swipe（避免纯色误判 + 低帧率触摸丢失）。
@@ -133,8 +159,8 @@ namespace Crystal.Client.Rendering
             RenderHud();
         }
 
-        // 战斗 HUD（增量3）：场景渲染后开第二个批次画攻击按钮+血条。移动摇杆为触控优先通道，
-        // HUD 按钮与摇杆共存（左下/右下不重叠；同 TouchJoystick 纯逻辑层模式，OnTouch 喂入）。
+        // HUD 渲染（增量1 扩展）：场景渲染后开第二个批次画战斗 HUD + HUD 状态条（MainDialog）+ 背包面板
+        // （InventoryDialog，Visible 时）+ 背包开/关按钮。移动摇杆为触控优先通道，HUD 按钮与摇杆共存。
         void RenderHud()
         {
             if (GameSession.State != GameSessionState.InGame) return;
@@ -142,9 +168,30 @@ namespace Crystal.Client.Rendering
             SyncHudStats();
             if (_hud.ScreenW != GameRuntime.ScreenW || _hud.ScreenH != GameRuntime.ScreenH)
                 _hud.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_bag.ScreenW != GameRuntime.ScreenW || _bag.ScreenH != GameRuntime.ScreenH)
+                _bag.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+
+            var scene = GameScene.Scene;
+            var main = scene != null ? scene.MainDialog : null;
+            var inv = scene != null ? scene.InventoryDialog : null;
+            // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
+            // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
+            if (main != null)
+            {
+                try { main.Process(); } catch (Exception ex) { Debug.LogError($"[mobile] main-process {ex.GetType().Name}: {ex.Message}"); }
+                UiText.WarmTree(main);
+            }
+            if (inv != null && inv.Visible)
+            {
+                try { inv.Process(); } catch (Exception ex) { Debug.LogError($"[mobile] inv-process {ex.GetType().Name}: {ex.Message}"); }
+                UiText.WarmTree(inv);
+            }
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
+            if (main != null) main.Draw();
+            if (inv != null && inv.Visible) inv.Draw();
+            _bag.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -182,6 +229,7 @@ namespace Crystal.Client.Rendering
             int bw = (int)MobileHud.HpBarSize.x, bh = (int)MobileHud.HpBarSize.y;
             _hpTex = SolidTexture(bw, bh);
             _mpTex = SolidTexture(bw, bh);
+            _bagTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 背包按钮白色方块（Render tint 上色）
         }
 
         static Texture2D SolidTexture(int w, int h)
@@ -205,9 +253,16 @@ namespace Crystal.Client.Rendering
         // 奔跑需助跑：服务器 HumanObject.CanRun 要求 _stepCounter>0（Walk 累积、静止 700ms 清零），
         // 静止直接发 C.Run 会被拒（原地不动）；故 700ms 内发过移动包才切 Run，否则首包/补步发 C.Walk。
         // TouchJoystick 纯逻辑层喂 Input.touches；移动通道与 PC WASD 同（C.Walk/C.Run 8 向）。
+        // 触摸互斥（8-0 适配层 RouteTouch）：唯一 y 翻转在 MobileUiAdapter.ToUi——背包按钮/HUD/MirControl 命中
+        // 收 ui 空间（左上原点），摇杆收 raw 空间（左下原点，方向量化以 y 上为正）；消费序=背包按钮→面板打开
+        // →Down 对话框命中→放行。面板打开期间摇杆整体停用（ToggleBag 已 Cancel 摇杆/HUD）。
         void PollJoystick()
         {
             if (GameSession.State != GameSessionState.InGame || GameSession.User == null) return;
+            var scene = GameScene.Scene;
+            var inv = scene != null ? scene.InventoryDialog : null;
+            bool bagOpen = inv != null && inv.Visible; // 面板打开期间摇杆停用（背包按钮仍可点击关闭）
+            // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch t = Input.GetTouch(i);
@@ -219,9 +274,22 @@ namespace Crystal.Client.Rendering
                     TouchPhase.Canceled => JoystickPhase.Cancel,
                     _ => JoystickPhase.Move, // Stationary：保持当前方向
                 };
-                _joystick.OnTouch(t.fingerId, phase, t.position);
-                _hud.OnTouch(t.fingerId, phase, t.position); // 攻击按钮独立于摇杆（右下区），Down 命中才激活
+                Vector2 raw = t.position;
+                if (Time.unscaledTime - _lastTouchDiagAt > 2f)
+                {
+                    _lastTouchDiagAt = Time.unscaledTime;
+                    Debug.Log($"[mobile] touch-diag n={Input.touchCount} raw=({t.position.x:F0},{t.position.y:F0}) screen=({Screen.width},{Screen.height}) pos=({raw.x:F0},{raw.y:F0})");
+                }
+                MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
+                {
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui),               // 背包按钮（ui 空间）
+                    PanelOpen = bagOpen,
+                    DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
+                    Joystick = (id, ph, rawPos) => _joystick.OnTouch(id, ph, rawPos),   // 摇杆（raw 空间）
+                    Hud = (id, ph, ui) => _hud.OnTouch(id, ph, ui),                      // HUD（ui 空间）
+                }, t.fingerId, phase, raw);
             }
+            if (bagOpen) return; // 面板打开：不驱动移动（含松手补步）
 
             bool moving = _joystick.Active && _joystick.Moving;
             if (moving)
@@ -248,6 +316,38 @@ namespace Crystal.Client.Rendering
                     _lastStepAt = CMain.Time;
                 }
             }
+        }
+
+        // 背包开/关（增量1）：切换 InventoryDialog.Visible；首次打开 RefreshInventory（格可见性）+ Process
+        // （负重/金币标签）。面板打开时 Cancel 摇杆/HUD（防手指锁残留）；日志 [mobile] bag-open/close
+        // 供 androidverify 数据断言。面板打开期间场景照常渲染（RenderHud 同批次画面板）。
+        void ToggleBag(bool open)
+        {
+            var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
+            if (inv == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!inv.Visible)
+                    {
+                        inv.RefreshInventory();
+                        inv.Process();
+                    }
+                    inv.Visible = true;
+                    _joystick.Cancel();
+                    _hud.Cancel();
+                }
+                else
+                {
+                    inv.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] bag-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] bag-{(open ? "open" : "close")} visible={inv.Visible}");
         }
 
         // 位置心跳：进图后节流打印实际坐标（androidverify 解析出生点 → 按实际坐标重裁区域 → 二次 push 重启）。

@@ -1,5 +1,4 @@
 using UnityEngine;
-using MPoint = Crystal.Client.Core.MirMath.Point;
 // 顶层 Client 命名空间类型全限定（本命名空间 Crystal.Client.Rendering 内裸 `Client.*` 会
 // 被解析到 Crystal.Client.* 而非顶层 Client，见 MLibraryUnity.cs namespace Client.MirGraphics 规避同因）。
 using CMain = global::Client.CMain;
@@ -103,7 +102,10 @@ namespace Crystal.Client.Rendering
 
         static void SetMPoint(float x, float y)
         {
-            CMain.MPoint = new MPoint((int)x, (int)y);
+            // 唯一翻转点（8-0 适配层）：Unity touch/鼠标 y 上（左下原点）→ Mir 鼠标事件左上空间。
+            // CMain.MPoint 经 IsMouseOver 与 DisplayRectangle.Contains 判定（X-1 实证 MirControl 左上 rect），
+            // 未翻转即 y 镜像（tap 可见按钮命中镜像侧）——阶段7 前置未翻转，8-0 收口到 MobileUiAdapter.ToUiPoint。
+            CMain.MPoint = MobileUiAdapter.ToUiPoint(x, y);
         }
 
         static void DispatchMove()

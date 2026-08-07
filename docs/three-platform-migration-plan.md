@@ -170,7 +170,7 @@
 - ✅ 实证（2026-08-08）：`-Smoke` 冒烟 PASS——单次进图（缓存出生坐标 / 无缓存回落地图中心 350,350 跳过 discovery）+ 全链路五断言 `chain: connect=True enter=True login=True select=True user=True coords=294,615` + hud-scan（atk/hp）正常；bag/moved 时序敏感断言按时序降级为 WARN-only（产物归档不挡 PASS）。冒烟耗时约 2 分钟（复用 warm 模拟器），硬 gate 退出舞台，移动验收全走确定性探针。
 
 #### 8-0 移动 UI 适配层（评审建议「阶段7.5」的落地形态）
-状态：🔲｜预估：1d｜依赖：X-1, X-2
+状态：✅（2026-08-08 完成）｜预估：1d｜依赖：X-1, X-2
 
 - 目标：交付一个共享的「触摸→MirControl」适配层 + 移动交互规范（含**移动输入契约**），供后续所有对话框触控任务复用。
 - 开发：
@@ -184,6 +184,7 @@
 - 验证：探针 PASS + CoreVerify 0 错误 + 已有 joystick/hud/bag 探针回归（提取不改行为）。
 - 提交：`feat(阶段8): 移动 UI 适配层 + 交互规范`。
 - 验收：后续所有对话框触控任务只调适配层，不各自实现 hit-test/翻转/手感；规范文档 8 项齐。
+- ✅ 实证（2026-08-08）：三探针回归 PASS——`mobileuiverify` 7/7（翻转/最小触控/对话框命中/互斥路由/返回键/滚动冲突/输入契约时序）+ `joystickverify` 12/12 + `mobilehudverify` 7/7（提取不改行为，摇杆收 raw / HUD收 ui 的原生空间契约保持）+ CoreVerify 0 错误；同时修复 `TouchInputAdapter.SetMPoint` 未翻转 y 的镜像 bug（对话框鼠标事件路径同源缺陷，现统一走 `MobileUiAdapter.ToUiPoint`）。
 
 #### 8-2-1 移动背包按钮 + InventoryDialog 接入（在途收尾）
 状态：🔶 在途（代码已写未提交）｜预估：0.5~1d｜依赖：8-0

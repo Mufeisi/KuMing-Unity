@@ -7,7 +7,8 @@ namespace Crystal.Client.Rendering
     public sealed class TouchInputMapper
     {
         // 拖拽判定阈值（逻辑像素）：位移超过此值视为拖拽，Up 不再触发 Click。
-        public float DragThresholdPx = 10f;
+        // 统一手感（8-0 输入契约）：单一来源 MobileInput.DragThresholdPx，禁各自为政。
+        public float DragThresholdPx = MobileInput.DragThresholdPx;
 
         bool _touching;
         bool _dragging;
