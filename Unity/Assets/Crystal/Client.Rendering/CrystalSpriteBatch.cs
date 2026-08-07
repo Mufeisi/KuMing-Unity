@@ -30,8 +30,6 @@ namespace Crystal.Client.Rendering
         public static bool ReplaceBlend;
         // G2 诊断：打印每次 Flush 提交（纹理/quad 数），batchmode 下经 Debug.Log 进 Editor.log。
         public static bool _debugFlush;
-        // G2 诊断：累计重建次数（跨帧缓存命中 → 静态场景每帧零重建）。
-        public static int MeshRebuildCount;
 
         static RenderTexture _target;
         static int _screenW, _screenH;
@@ -40,12 +38,6 @@ namespace Crystal.Client.Rendering
 
         static readonly Dictionary<Texture2D, List<Quad>> _quads = new Dictionary<Texture2D, List<Quad>>();
         static readonly List<Texture2D> _keys = new List<Texture2D>();
-        // 每纹理独立 Mesh（G2 实证：单一共享 Mesh + 连续 DrawMeshNow 无 CPU 间隔时 GPU 消费不及，
-        // 上一条纹理的 buffer 被下一条覆写 → 非确定性错画；逐行 Flush 因行间大量 Draw 天然有间隔才稳定）。
-        // 脏检查（quads 内容 + 屏幕尺寸未变）跳过重建 → 静态场景每帧只 SetPass+DrawMeshNow，零 buffer 上传。
-        static readonly Dictionary<Texture2D, Mesh> _meshes = new Dictionary<Texture2D, Mesh>();
-        static readonly Dictionary<Texture2D, List<Quad>> _meshSnap = new Dictionary<Texture2D, List<Quad>>();
-        static int _meshScreenW, _meshScreenH;
         static Material _matAlpha, _matAdd, _matReplace, _matMultiply;
 
         static readonly int _mainTexId = Shader.PropertyToID("_MainTex");
@@ -65,8 +57,13 @@ namespace Crystal.Client.Rendering
             _screenW = screenW;
             _screenH = screenH;
             _prevRT = RenderTexture.active;
-            RenderTexture.active = target;
-            GL.Viewport(new Rect(0, 0, screenW, screenH));
+            // 屏幕模式（target=null）：不触碰 RenderTexture.active/GL.Viewport——OnPostRender 相机上下文里
+            // 手动置 active=null 会使后续 GL 立即模式绘制丢失（实证：诊断 red quad 不经 Begin 成功，Flush 经 Begin 全黑）。
+            if (target != null)
+            {
+                RenderTexture.active = target;
+                GL.Viewport(new Rect(0, 0, screenW, screenH));
+            }
             GL.PushMatrix();
             GL.LoadProjectionMatrix(Matrix4x4.identity);
             GL.LoadIdentity();
@@ -132,68 +129,45 @@ namespace Crystal.Client.Rendering
                 var tex = _keys[k];
                 var list = _quads[tex];
                 if (list.Count == 0) continue;
-                var mesh = GetMesh(tex, list);
                 var mat = ReplaceBlend ? _matReplace
                         : BlendingMode == CrystalBlendMode.MULTIPLY ? _matMultiply
                         : (Blending ? _matAdd : _matAlpha);
                 mat.SetFloat(_grayscaleId, GrayScale ? 1f : 0f);
                 mat.SetTexture(_mainTexId, tex);
                 mat.SetPass(0);
-                Graphics.DrawMeshNow(mesh, Vector3.zero, Quaternion.identity);
+                // GL 立即模式提交：顶点已 CPU 烘焙 NDC，Begin 已设 GL 矩阵栈 identity → shader vert 直通 v.vertex.xy。
+                // 弃用 DrawMeshNow：实证其在相机 OnPostRender 上下文不输出（PC 屏幕全黑 vs RT 探针正常），
+                // GL 立即模式 RT/屏幕双路径均验证 OK（红色测试 quad）。
+                GL.Begin(GL.QUADS);
+                for (int i = 0; i < list.Count; i++) EmitQuad(list[i], tex.width, tex.height);
+                GL.End();
                 DPSCounter++;
-                if (_debugFlush) Debug.Log($"[flush] k={k} tex={tex.name} quads={list.Count} meshVerts={mesh.vertexCount} mat={mat.name}");
+                if (_debugFlush) Debug.Log($"[flush] k={k} tex={tex.name} quads={list.Count} mat={mat.name}");
             }
             _quads.Clear();
             _keys.Clear();
         }
 
-        // 取（或构建）tex 的绘制 Mesh。每纹理独立 Mesh 实例（单一共享 Mesh 会 buffer 竞态错画）。
-        // 缓存命中且内容未变 → 不重建（静态场景每帧零 buffer 上传，只 SetPass+DrawMeshNow）。
-        static Mesh GetMesh(Texture2D tex, List<Quad> list)
+        // 单 quad 提交：屏幕 top-down → NDC y-up（与原 BuildMesh 同款顶点烘焙），v 轴翻转匹配 PNG top-down。
+        static void EmitQuad(Quad q, int tw, int th)
         {
-            bool have = _meshes.TryGetValue(tex, out var mesh);
-            bool dirty = !have || _meshScreenW != _screenW || _meshScreenH != _screenH
-                || !SameQuads(list, _meshSnap.TryGetValue(tex, out var snap) ? snap : null);
-            if (have && !dirty) return mesh;
-            if (!have)
-            {
-                mesh = new Mesh();
-                mesh.name = "CrystalSpriteBatch";
-                mesh.MarkDynamic();
-                mesh.hideFlags = HideFlags.HideAndDontSave;
-                _meshes[tex] = mesh;
-            }
-            BuildMesh(mesh, list, tex.width, tex.height);
-            MeshRebuildCount++;
-            _meshSnap[tex] = new List<Quad>(list);
-            _meshScreenW = _screenW;
-            _meshScreenH = _screenH;
-            return mesh;
+            float invW = 1f / _screenW, invH = 1f / _screenH;
+            float x0 = q.pos.x, y0 = q.pos.y, x1 = q.pos.x + q.size.x, y1 = q.pos.y + q.size.y;
+            float nx0 = x0 * invW * 2f - 1f, ny0 = 1f - y0 * invH * 2f;
+            float nx1 = x1 * invW * 2f - 1f, ny1 = 1f - y1 * invH * 2f;
+            float invTw = 1f / tw, invTh = 1f / th;
+            float u0 = q.src.x * invTw, u1 = (q.src.x + q.src.width) * invTw;
+            float vTop = 1f - q.src.y * invTh;
+            float vBot = 1f - (q.src.y + q.src.height) * invTh;
+            GL.Color(q.color);
+            GL.TexCoord2(u0, vTop); GL.Vertex3(nx0, ny0, 0f);
+            GL.TexCoord2(u1, vTop); GL.Vertex3(nx1, ny0, 0f);
+            GL.TexCoord2(u0, vBot); GL.Vertex3(nx0, ny1, 0f);
+            GL.TexCoord2(u1, vBot); GL.Vertex3(nx1, ny1, 0f);
         }
 
-        // 释放全部缓存的 per-texture Mesh（场景/图集切换时调用，防 GPU buffer 泄漏）。
-        public static void ReleaseMeshes()
-        {
-            foreach (var kv in _meshes)
-            {
-                if (kv.Value != null) UnityEngine.Object.DestroyImmediate(kv.Value);
-            }
-            _meshes.Clear();
-            _meshSnap.Clear();
-        }
-
-        static bool SameQuads(List<Quad> a, List<Quad> b)
-        {
-            if (a == null || b == null || a.Count != b.Count) return false;
-            for (int i = 0; i < a.Count; i++)
-            {
-                var q = a[i]; var r = b[i];
-                if (q.pos.x != r.pos.x || q.pos.y != r.pos.y || q.size.x != r.size.x || q.size.y != r.size.y) return false;
-                if (q.src.x != r.src.x || q.src.y != r.src.y || q.src.width != r.src.width || q.src.height != r.src.height) return false;
-                if (q.color.r != r.color.r || q.color.g != r.color.g || q.color.b != r.color.b || q.color.a != r.color.a) return false;
-            }
-            return true;
-        }
+        // 释放资源（原 per-texture Mesh 已随 DrawMeshNow 移除，保留 API 兼容：GameRenderer.ReleaseAll 调用）。
+        public static void ReleaseMeshes() { }
 
         // 对应 DXManager.SetBlend(bool, float, BlendMode) —— 换态前 flush（与旧 Sprite.Flush 同义）。
         public static void SetBlend(bool value, float rate = 1f, CrystalBlendMode mode = CrystalBlendMode.NORMAL)
@@ -228,8 +202,11 @@ namespace Crystal.Client.Rendering
             Flush();
             _prevRT = RenderTexture.active;
             _target = target;
-            RenderTexture.active = target;
-            if (target != null) GL.Viewport(new Rect(0, 0, target.width, target.height));
+            if (target != null)
+            {
+                RenderTexture.active = target;
+                GL.Viewport(new Rect(0, 0, target.width, target.height));
+            }
         }
 
         public static void Clear(Color color)
@@ -267,48 +244,5 @@ namespace Crystal.Client.Rendering
             }
         }
 
-        static void BuildMesh(Mesh mesh, List<Quad> list, int tw, int th)
-        {
-            int n = list.Count;
-            int needV = n * 4, needT = n * 6;
-            // 精确大小数组（勿用共享 4096 长数组赋给 mesh：会把垃圾/残留顶点带进 buffer，
-            // 且 per-texture mesh 独立时顶点数须 == quads*4 才与索引一致）。
-            var verts = new Vector3[needV];
-            var uvs = new Vector2[needV];
-            var cols = new Color32[needV];
-            var tris = new int[needT];
-
-            int vi = 0, ti = 0;
-            float invW = 1f / _screenW, invH = 1f / _screenH;
-            float invTw = 1f / tw, invTh = 1f / th;
-            for (int i = 0; i < n; i++)
-            {
-                var q = list[i];
-                float x0 = q.pos.x, y0 = q.pos.y, x1 = q.pos.x + q.size.x, y1 = q.pos.y + q.size.y;
-                // 屏幕 top-down → NDC y-up
-                float nx0 = x0 * invW * 2f - 1f, ny0 = 1f - y0 * invH * 2f;
-                float nx1 = x1 * invW * 2f - 1f, ny1 = 1f - y1 * invH * 2f;
-                // 源区域 uv：v 轴反转使 quad 顶边 = PNG 顶行（匹配 golden top-down）
-                float u0 = q.src.x * invTw, u1 = (q.src.x + q.src.width) * invTw;
-                float vTop = 1f - q.src.y * invTh;
-                float vBot = 1f - (q.src.y + q.src.height) * invTh;
-                var c = (Color32)q.color;
-
-                verts[vi] = new Vector3(nx0, ny0, 0f); uvs[vi] = new Vector2(u0, vTop); cols[vi] = c; vi++;
-                verts[vi] = new Vector3(nx1, ny0, 0f); uvs[vi] = new Vector2(u1, vTop); cols[vi] = c; vi++;
-                verts[vi] = new Vector3(nx0, ny1, 0f); uvs[vi] = new Vector2(u0, vBot); cols[vi] = c; vi++;
-                verts[vi] = new Vector3(nx1, ny1, 0f); uvs[vi] = new Vector2(u1, vBot); cols[vi] = c; vi++;
-
-                int b = i * 4;
-                tris[ti++] = b; tris[ti++] = b + 1; tris[ti++] = b + 2;
-                tris[ti++] = b + 1; tris[ti++] = b + 3; tris[ti++] = b + 2;
-            }
-
-            mesh.Clear();
-            mesh.vertices = verts;
-            mesh.uv = uvs;
-            mesh.colors32 = cols;
-            mesh.triangles = tris;
-        }
     }
 }

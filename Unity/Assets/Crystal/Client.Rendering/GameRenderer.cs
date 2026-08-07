@@ -46,7 +46,7 @@ namespace Crystal.Client.Rendering
             if (idx == 100) return "ShandaMir2/Tiles";
             if (idx >= 101 && idx <= 109) return "ShandaMir2/Tiles" + (idx - 99); // 101→Tiles2 ... 109→Tiles10
             if (idx == 110) return "ShandaMir2/SmTiles";
-            if (idx >= 111 && idx <= 119) return "ShandaMir2/SmTiles" + (idx - 99);
+            if (idx >= 111 && idx <= 118) return "ShandaMir2/smTiles" + (idx - 109); // 源/产物命名 111→smTiles2 ... 118→smTiles9（非 SmTiles+idx-99，实证偏移）
             if (idx == 120) return "ShandaMir2/Objects";
             if (idx >= 121 && idx <= 150) return "ShandaMir2/Objects" + (idx - 119); // 121→Objects2 ... 150→Objects31
             if (idx == 190) return "ShandaMir2/AniTiles1";
@@ -78,6 +78,7 @@ namespace Crystal.Client.Rendering
             if (!File.Exists(man))
             {
                 Debug.LogWarning($"[gamerenderer] manifest missing {man}");
+                _libs[rel] = null; // 负缓存：缺段不每帧重查+刷日志
                 return null;
             }
             lib = AtlasLibrary.Load(man);
@@ -93,6 +94,7 @@ namespace Crystal.Client.Rendering
             if (!File.Exists(man))
             {
                 Debug.LogWarning($"[gamerenderer] map manifest missing {man}");
+                _mapLibs[rel] = null; // 负缓存：缺段不每帧重查+刷日志
                 return null;
             }
             lib = AtlasLibrary.Load(man);

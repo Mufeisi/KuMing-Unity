@@ -21,7 +21,15 @@ namespace Crystal.Client.Rendering
         public static int ScreenW = 1280, ScreenH = 720;
         public static int LastObjectDraws; // 探针断言：本帧实际绘制对象数
 
+        // 探针路径：逻辑 + 渲染到显式 RT（batchmode 无相机，不存在相机清屏覆盖问题）。
         public static void Tick(RenderTexture target)
+        {
+            TickLogic();
+            Render(target);
+        }
+
+        // Player 壳路径：每帧逻辑推进（Update 调）；渲染走 RenderScreen（OnPostRender，相机渲染后才轮到，否则被相机清屏覆盖）。
+        public static void TickLogic()
         {
             if (GameSession.State == GameSessionState.Idle || GameSession.State == GameSessionState.Error) return;
             CMain.Time = _clock.ElapsedMilliseconds;
@@ -32,7 +40,13 @@ namespace Crystal.Client.Rendering
             MapControl.OffSetX = ScreenW / 2 / MapControl.CellWidth;
             MapControl.OffSetY = ScreenH / 2 / MapControl.CellHeight - 1;
             ProcessObjects();
-            Render(target);
+        }
+
+        // Player 壳路径：屏幕渲染（相机 OnPostRender 调用，target=null 直渲后缓冲）。
+        public static void RenderScreen()
+        {
+            if (GameSession.User == null || GameSession.MapReader == null) return;
+            Render(null);
         }
 
         static void ProcessObjects()

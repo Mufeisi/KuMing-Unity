@@ -101,7 +101,7 @@ namespace Crystal.Rendering.Editor
             mapDir = Path.GetFullPath(mapDir);
             _batchFloor = Environment.GetEnvironmentVariable("CRYSTAL_BATCH") != "0";
             CrystalSpriteBatch._debugFlush = Environment.GetEnvironmentVariable("CRYSTAL_FLUSH_DEBUG") == "1";
-            CrystalSpriteBatch.MeshRebuildCount = 0;
+            CrystalSpriteBatch.DPSCounter = 0;
 
             string mapPath = Path.Combine(mapDir, map);
             if (!File.Exists(mapPath))
@@ -887,7 +887,7 @@ namespace Crystal.Rendering.Editor
                 Console.WriteLine($"scene-perf: P50={p50:F2}ms P95={p95:F2}ms avg={avg:F2}ms FPS={fps:F1}");
                 Console.WriteLine($"scene-perf: drawP50={drawMs[frames / 2]:F2}ms flushP50={flushMs[frames / 2]:F2}ms drawP95={drawMs[(int)(frames * 0.95)]:F2}ms flushP95={flushMs[(int)(frames * 0.95)]:F2}ms");
                 Console.WriteLine($"scene-perf: flushCountPerFrame={quads}");
-                Console.WriteLine($"scene-perf: meshRebuilds={CrystalSpriteBatch.MeshRebuildCount} (frames={frames})");
+                Console.WriteLine($"scene-perf: flushDPS={CrystalSpriteBatch.DPSCounter} (frames={frames})");
                 Console.WriteLine(fps >= 60.0 && p95 <= 16.6 ? "scene-perf: G2-PASS (1080p ≥60FPS)" : "scene-perf: G2-FAIL (below 60FPS)");
 
                 string fpsStr = fps.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);

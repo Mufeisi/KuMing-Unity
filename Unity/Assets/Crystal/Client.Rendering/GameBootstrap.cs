@@ -1,24 +1,93 @@
+using System;
+using System.IO;
 using Client;
 using Client.MirNetwork;
+using Client.MirScenes;
 using UnityEngine;
 using C = ClientPackets;
 
 namespace Crystal.Client.Rendering
 {
-    // PC Player 引导壳（C3）：每帧驱动 GameRuntime.Tick 渲染到屏幕，并把 WASD/Shift 轮询翻译为移动包。
-    // 由 BuildPC 幂等挂载 Main.unity 场景（C5 场景接线），batchmode 探针不经过此组件（直接调 GameRuntime.Tick）。
+    // PC Player 引导壳（C3 输入 + C5 引导）：Start 读 env 配置→连接登录，Update 驱动逻辑+输入，
+    // OnPostRender 屏幕渲染（Update 期的 GL 绘制会被相机渲染清屏覆盖）。挂 Main.unity 主相机（BuildPC 幂等接线）。
+    // 验证：pcverify.ps1 起服务器→启动 exe→等进图自动截图（CRYSTAL_AUTO_SHOT）→断言 Player.log + PNG。
     public sealed class GameBootstrap : MonoBehaviour
     {
         const long MoveIntervalMs = 500; // 走格节流（Mir2 walk 约 0.5s/格）
+        // 构建包含锚点：BuildPC 把渲染 shader 序列化进此字段 → 场景→shader 依赖 → Player 构建包含（Shadr.Find 需已包含）。
+        [HideInInspector] public Shader[] renderShaders;
         long _lastMoveAt;
+        long _enterShotAt;
         MirDirection _lastDir = MirDirection.Up;
+        bool _booted;
+        bool _shot;
+
+        void Start()
+        {
+            Application.targetFrameRate = 60;
+            string exeDir = Path.GetDirectoryName(Application.dataPath);
+            GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.GetFullPath(Path.Combine(exeDir, "../Server/publish/Maps")));
+            GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/map")));
+            GameRenderer.AtlasDir = Env("CRYSTAL_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/all")));
+            GameRenderer.BatchFloor = true;
+            GameRuntime.ScreenW = Screen.width;
+            GameRuntime.ScreenH = Screen.height;
+
+            string host = Env("CRYSTAL_NET_HOST", "127.0.0.1");
+            int port = GetInt("CRYSTAL_NET_PORT", 7000);
+            string id = Env("CRYSTAL_LOGIN_ID", "pcplayer");
+            string pw = Env("CRYSTAL_LOGIN_PW", "pcplayer");
+            GameSession.OnEnterGame += () =>
+            {
+                _enterShotAt = CMain.Time + 6000;
+                Debug.Log($"[pcplayer] enter-game objects={MapControl.Objects.Count}");
+            };
+            GameSession.OnError += m => Debug.LogError($"[pcplayer] error {m}");
+            GameSession.OnSelectReady += () =>
+            {
+                Debug.Log($"[pcplayer] select-ready chars={GameSession.Characters.Count}");
+                if (GameSession.Characters.Count > 0)
+                    GameSession.SelectCharacter(0);
+                else
+                    GameSession.CreateCharacter("pcplayer", MirGender.Male, MirClass.Warrior);
+            };
+
+            Debug.Log($"[pcplayer] boot map={GameSession.MapDir} atlas={GameRenderer.AtlasDir}");
+            GameSession.Connect(host, port);
+            GameSession.Login(id, pw);
+            _booted = true;
+        }
 
         void Update()
         {
-            GameRuntime.ScreenW = Screen.width;
-            GameRuntime.ScreenH = Screen.height;
+            if (!_booted) return;
             PollInput();
-            GameRuntime.Tick(null);
+            GameRuntime.TickLogic();
+            MaybeAutoShot();
+        }
+
+        void OnPostRender()
+        {
+            if (!_booted) return;
+            GameRuntime.RenderScreen();
+        }
+
+        void OnApplicationQuit()
+        {
+            GameRuntime.ReleaseAll();
+        }
+
+        // 验证钩子：进图后延时自动截图（CRYSTAL_AUTO_SHOT 设路径则启用），pcverify.ps1 断言产物。
+        void MaybeAutoShot()
+        {
+            if (_shot) return;
+            string path = Environment.GetEnvironmentVariable("CRYSTAL_AUTO_SHOT");
+            if (string.IsNullOrEmpty(path)) return;
+            if (GameSession.State != GameSessionState.InGame || GameRuntime.LastObjectDraws == 0) return;
+            if (CMain.Time < _enterShotAt) return;
+            _shot = true;
+            ScreenCapture.CaptureScreenshot(path);
+            Debug.Log($"[pcplayer] shot {path} objects={MapControl.Objects.Count} dps={CrystalSpriteBatch.DPSCounter}");
         }
 
         // WASD → 8 方向移动包；按住 Shift 变跑（C.Run）。轮询态驱动，节流走格速率。
@@ -41,9 +110,20 @@ namespace Crystal.Client.Rendering
 
             if (CMain.Time - _lastMoveAt < MoveIntervalMs) return;
             _lastMoveAt = CMain.Time;
-            _lastDir = dir;
             bool run = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             Network.Enqueue(run ? new C.Run { Direction = dir } : new C.Walk { Direction = dir });
+        }
+
+        static string Env(string name, string def)
+        {
+            string v = Environment.GetEnvironmentVariable(name);
+            return string.IsNullOrEmpty(v) ? def : v;
+        }
+
+        static int GetInt(string name, int def)
+        {
+            string v = Environment.GetEnvironmentVariable(name);
+            return int.TryParse(v, out int r) ? r : def;
         }
     }
 }
