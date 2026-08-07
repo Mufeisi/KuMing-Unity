@@ -12,6 +12,8 @@ using C = ClientPackets;
 using S = ServerPackets;
 using MPoint = Crystal.Client.Core.MirMath.Point;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Crystal.Client.Rendering.Editor")]
+
 namespace Crystal.Client.Rendering
 {
     public enum GameSessionState
@@ -209,6 +211,12 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.ObjectDied:
                     ObjectDied((S.ObjectDied)p);
                     break;
+                case (short)ServerPacketIds.EquipItem:
+                    EquipItem((S.EquipItem)p);
+                    break;
+                case (short)ServerPacketIds.RemoveItem:
+                    RemoveItem((S.RemoveItem)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -296,6 +304,39 @@ namespace Crystal.Client.Rendering
             }
         }
 
+        // 装备穿戴回流（8-2-3）：S.EquipItem 成功确认→解锁来源背包格（交换前按 UniqueID 定位）
+        // + 目标装备格（按槽位），随后 ApplyEquip 镜像交换数组（RefreshStats 重算外观/属性）。
+        // internal：equipverify 探针（Crystal.Client.Rendering.Editor）直接调用测全链。
+        internal static void EquipItem(S.EquipItem p)
+        {
+            if (MapObject.User == null) return;
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+
+            var fromCell = scene.InventoryDialog != null ? scene.InventoryDialog.GetCell(p.UniqueID) : null;
+            if (p.To >= 0 && p.To < MapObject.User.Equipment.Length && scene.CharacterDialog != null)
+                scene.CharacterDialog.Grid[p.To].Locked = false;
+            if (fromCell != null) fromCell.Locked = false;
+
+            if (!p.Success) return;
+            MapObject.User.ApplyEquip(p);
+        }
+
+        // 卸下回流（8-2-3）：S.RemoveItem 成功确认→解锁来源装备格，随后 ApplyRemove 迁回背包。
+        // internal：equipverify 探针直接调用测全链。
+        internal static void RemoveItem(S.RemoveItem p)
+        {
+            if (MapObject.User == null) return;
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+
+            var fromCell = scene.CharacterDialog != null ? scene.CharacterDialog.GetCell(p.UniqueID) : null;
+            if (fromCell != null) fromCell.Locked = false;
+
+            if (!p.Success) return;
+            MapObject.User.ApplyRemove(p);
+        }
+
         static void UserLocation(S.UserLocation p)
         {
             if (MapObject.User == null) return;
@@ -376,6 +417,26 @@ namespace Crystal.Client.Rendering
             MapObject.User = user;
             User = user;
             if (GameScene.Scene != null) GameScene.User = user; // InventoryDialog.Process/RefreshInventory 数据源
+            // 装备窗口（8-2-3）：CharacterDialog ctor 注入 Actor（私有仅 ctor 可设）→ 须在 User 到齐后
+            // 创建（InitInGameDialogs 时 MapObject.User 尚空）。默认隐藏（MirControl.Visible 默认 true），
+            // MobileBootstrap 装备按钮 ShowCharacterPage 打开；CreateItemLabel 依赖其存在。
+            // Parent=Scene 必须显式挂（旧客户端 GameScene 同款）：Mir 鼠标链 hit 走 Scene.Controls
+            // 子树递归，不挂父则装备格收不到双击/悬停（卸下无法触发），绘制也脱离场景树。
+            if (GameScene.Scene != null && GameScene.Scene.CharacterDialog == null)
+            {
+                try
+                {
+                    GameScene.Scene.CharacterDialog = new CharacterDialog(MirGridType.Equipment, user)
+                    {
+                        Parent = GameScene.Scene,
+                        Visible = false,
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[gamesession] char-dialog {ex.GetType().Name}: {ex.Message}");
+                }
+            }
             // 补旧客户端 Load() 的 RefreshStats：UserInformation 仅含当前 HP/MP，最大血量须从
             // 等级/装备/技能计算（Stats[Stat.HP]），供 HUD 血条分母；进图时 Scene 已由 MapInformation 建立。
             // try/catch 防 RefreshStats 内部（SetLibraries 图集等）异常传播卡死包处理主循环。

@@ -281,8 +281,15 @@ namespace Client.MirNetwork
             BeginSend(data);
         }
 
+        // 发包捕获缝（8-2-3）：未连接时 _sendList==null，Enqueue 静默丢弃——纯逻辑探针
+        // （equipverify）无法断言穿脱包。SentPackets 无条件记录每次 Enqueue（含丢弃），
+        // 生产零开销（仅引用入队），探针读取后 Clear 隔离用例。
+        public static readonly System.Collections.Concurrent.ConcurrentQueue<Packet> SentPackets =
+            new System.Collections.Concurrent.ConcurrentQueue<Packet>();
+
         public static void Enqueue(Packet p)
         {
+            if (p != null) SentPackets.Enqueue(p);
             if (_sendList != null && p != null)
                 _sendList.Enqueue(p);
         }

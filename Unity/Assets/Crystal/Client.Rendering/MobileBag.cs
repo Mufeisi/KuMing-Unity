@@ -21,6 +21,11 @@ namespace Crystal.Client.Rendering
         public bool Open;
         // 开关动作注入（调用方接 GameScene.Scene.InventoryDialog 的 Show/Hide + RefreshInventory）。
         public Action<bool> OnToggle;
+        // 按钮锚点边距（实例可覆写：装备窗口按钮复用本控件时下移换色区分，E2E 按颜色定位）。
+        public Vector2 Margin = ButtonMargin;
+        // 开/关 tint（实例可覆写；背包=黄，装备=绿，E2E 扫描区分两按钮）。
+        public Color TintOpen = new Color(1f, 0.85f, 0.3f, 0.95f);
+        public Color TintClosed = new Color(0.95f, 0.62f, 0.2f, 0.95f);
 
         Rect _rect;
         bool _pressed;
@@ -40,7 +45,14 @@ namespace Crystal.Client.Rendering
             Recompute();
         }
 
-        void Recompute() => _rect = new Rect(ScreenW - ButtonW - ButtonMargin.x, ButtonMargin.y, ButtonW, ButtonH);
+        // 换锚点（Start 阶段在首帧 SetScreen 可能不触发时生效，避免脏 _rect 覆盖原按钮）。
+        public void SetMargin(Vector2 margin)
+        {
+            Margin = margin;
+            Recompute();
+        }
+
+        void Recompute() => _rect = new Rect(ScreenW - ButtonW - Margin.x, Margin.y, ButtonW, ButtonH);
 
         public Rect ButtonRect => _rect;
         public bool HitTest(Vector2 pos) => _rect.Contains(pos);
@@ -87,7 +99,7 @@ namespace Crystal.Client.Rendering
         // 与右下攻击按钮橙圆盘色系区分：背包按钮 G 通道高，E2E 扫描可用 R>200&&G>170&&B<140 定位）。
         public void Render(Texture2D tex)
         {
-            var c = Open ? new Color(1f, 0.85f, 0.3f, 0.95f) : new Color(0.95f, 0.62f, 0.2f, 0.95f);
+            var c = Open ? TintOpen : TintClosed;
             CrystalSpriteBatch.Draw(tex, new Rect(0, 0, tex.width, tex.height), new Vector3(_rect.x, _rect.y, 0f), c);
         }
     }

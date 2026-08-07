@@ -148,7 +148,8 @@ namespace Client.MirScenes
 
         // 鼠标输入事件入口（迭代包2）：移植 MirScene.OnMouseDown/Up/Move/Click 的
         // MouseControl/ActiveControl 分发语义（Client/MirControls/MirScene.cs:77-141）。
-        // 双击检测（_buttons/_lastClickTime/_clickedControl）裁剪：仅保留单次点击路径。
+        // 双击检测（8-2-3 增量）：对齐旧客户端 MirScene 双击窗口语义，但命中控件记录
+        // MouseControl（目标 Up 已 Deactivate 清 ActiveControl，Click 实际经 hover 兜底分发）。
         // OnMouseClick 增补 MouseControl 兜底：MirControl.OnMouseUp 已 Deactivate 清空
         // ActiveControl，释放时指针仍在按钮上则仍应触发 Click（与 WinForms 按下释放同控件语义一致）。
         public override void OnMouseDown(MouseEventArgs e)
@@ -175,15 +176,62 @@ namespace Client.MirScenes
             else
                 base.OnMouseMove(e);
         }
+        // 双击窗口（8-2-3）：对齐旧客户端 SystemInformation.DoubleClickTime（约 500ms）。
+        public const long DoubleClickTimeMs = 500;
+        static long _lastClickTime;
+        static MouseButtons _lastButton;
+        static MirControl _clickedControl;
+
         public override void OnMouseClick(MouseEventArgs e)
         {
             if (!Enabled) return;
+            if (_lastButton == e.Button && CMain.Time - _lastClickTime <= DoubleClickTimeMs)
+            {
+                OnMouseDoubleClick(e);
+                return;
+            }
+            _lastClickTime = 0;
+
+            // 点击命中基准：ActiveControl 已被 OnMouseUp Deactivate 清空，实际命中经
+            // MouseControl（hover 递归）兜底（见下），故 _clickedControl 记录真实命中控件。
+            MirControl hit = null;
             if (ActiveControl != null && ActiveControl.IsMouseOver(CMain.MPoint) && ActiveControl != this)
-                ActiveControl.OnMouseClick(e);
+                hit = ActiveControl;
             else if (MouseControl != null && MouseControl != this && MouseControl.IsMouseOver(CMain.MPoint))
-                MouseControl.OnMouseClick(e);
+                hit = MouseControl;
+
+            if (hit != null) hit.OnMouseClick(e);
+            else base.OnMouseClick(e);
+
+            _clickedControl = hit;
+            _lastClickTime = CMain.Time;
+            _lastButton = e.Button;
+        }
+
+        // 双击分发（8-2-3）：两次点击落在同一控件（_clickedControl==hit）才走 OnMouseDoubleClick
+        // （MirItemCell 双击=使用/卸下）；否则退化为单次点击（防跨控件误触发）。
+        public override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            if (!Enabled) return;
+            _lastClickTime = 0;
+            _lastButton = MouseButtons.None;
+
+            MirControl hit = null;
+            if (ActiveControl != null && ActiveControl.IsMouseOver(CMain.MPoint) && ActiveControl != this)
+                hit = ActiveControl;
+            else if (MouseControl != null && MouseControl != this && MouseControl.IsMouseOver(CMain.MPoint))
+                hit = MouseControl;
+
+            if (hit != null)
+            {
+                if (hit == _clickedControl) hit.OnMouseDoubleClick(e);
+                else hit.OnMouseClick(e);
+            }
             else
-                base.OnMouseClick(e);
+            {
+                if (_clickedControl == null) base.OnMouseDoubleClick(e);
+                else base.OnMouseClick(e);
+            }
         }
 
         public Color GradeNameColor(ItemGrade grade)

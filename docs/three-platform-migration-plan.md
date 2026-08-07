@@ -69,9 +69,9 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）。
 
-**当前在途**：阶段8 第2项 增量3——装备穿戴（点格→EquipItem→角色外观）。见任务 `8-2-3`。
+**当前在途**：阶段8 第2项 增量4——药品使用（点药水→C.UseItem）。见任务 `8-2-4`。
 
 ---
 
@@ -96,7 +96,7 @@
 | 8-0 | 移动 UI 适配层（交互规范 + 移动输入契约） | 8·基础 | ✅ | X-1, X-2 | 1d |
 | 8-2-1 | 移动背包按钮 + InventoryDialog 接入（在途收尾） | 8·第2项·增1 | ✅ | 8-0 | 0.5~1d |
 | 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | ✅ | 8-2-1 | 1~1.5d |
-| 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | 🔲 | 8-2-2 | 1d |
+| 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | ✅ | 8-2-2 | 1d |
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | 🔲 | 8-2-2 | 0.5d |
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | 🔲 | 8-2-2 | 1d |
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | 🔲 | 8-2-2 | 1d |
@@ -216,7 +216,7 @@
 - 🔧 探针关键修复（batchmode 无库数据陷阱）：`MirImageControl.Size` getter 在 `AutoSize&&Library!=null&&Index>=0` 时返回 `Library.GetTrueSize(Index)=(0,0)`，吞掉 ctor 显式尺寸 → 面板/按钮 `Size=0` → `IsMouseOver` 永不命中。探针统一关 `AutoSize` 回落 base.Size（面板 340x240 覆盖 CloseButton 全宽 289..329）。数组替换陷阱：`_user.Inventory = new UserItem[56]` 会丢原数组物品，case5/6 重选前需保格 `Inventory[6]=_sword`。
 
 #### 8-2-3 装备穿戴
-状态：🔲｜预估：1d｜依赖：8-2-2
+状态：✅｜预估：1d｜依赖：8-2-2｜验收：真机穿/脱武器，角色外观（Body/Hair/Weapon 层）随之变化
 
 - 目标：背包格点击「装备/卸下」→ `C.EquipItem` → 角色外观更新。
 - 开发：装备位判定（ItemInfo.Type 映射 EquipmentSlot）；双击或按钮确认（避免误触）；`S.EquipItem` 成功 → 装备槽 + 外观重算（SetLibraries/RefreshStats 已移植）。

@@ -39,6 +39,7 @@ namespace Crystal.Client.Rendering
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
         readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
+        readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex;      // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
@@ -78,11 +79,19 @@ namespace Crystal.Client.Rendering
             Settings.ScreenWidth = GameRuntime.ScreenW;  // MainDialog.Location 依赖（旧坐标系：左上原点）
             Settings.ScreenHeight = GameRuntime.ScreenH;
             _bag.OnToggle = ToggleBag;
+            _equip.OnToggle = ToggleChar;
+            // 装备按钮锚点：背包按钮正下方（90, 140+54+8），绿 tint 与背包黄区分（E2E 颜色定位）。
+            _equip.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + MobileBag.ButtonH + 8f));
+            _equip.TintOpen = new Color(0.45f, 1f, 0.5f, 0.95f);
+            _equip.TintClosed = new Color(0.3f, 0.7f, 0.3f, 0.95f);
             // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
-            // Hide()（增量2）顺带清选中+Tooltip。
+            // Hide()（增量2）顺带清选中+Tooltip；装备窗口（增量3）优先关（顶层先关）。
             MobileUiAdapter.BackHandler = () =>
             {
-                var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
+                var scene = GameScene.Scene;
+                var chr = scene != null ? scene.CharacterDialog : null;
+                if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
+                var inv = scene != null ? scene.InventoryDialog : null;
                 if (inv != null && inv.Visible) { inv.Hide(); return true; }
                 return false;
             };
@@ -138,8 +147,9 @@ namespace Crystal.Client.Rendering
             }
             PollJoystick();
             GameRuntime.TickLogic();
-            // 手动摇杆优先：拖动时暂停自动战斗；背包面板打开期间同样暂停（面板操作不被打断）。
-            bool uiOpen = GameScene.Scene?.InventoryDialog?.Visible == true;
+            // 手动摇杆优先：拖动时暂停自动战斗；背包/装备面板打开期间同样暂停（面板操作不被打断）。
+            var uiSc = GameScene.Scene;
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true));
             if (!_joystick.Active && !uiOpen) _combat.Tick();
             LogPosition();
             // 渲染就绪钩子：首帧 BuildLibIndex 全图扫描慢（模拟器 swiftshader 约 2.6s），
@@ -175,6 +185,7 @@ namespace Crystal.Client.Rendering
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
             var inv = scene != null ? scene.InventoryDialog : null;
+            var chr = scene != null ? scene.CharacterDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -187,12 +198,18 @@ namespace Crystal.Client.Rendering
                 try { inv.Process(); } catch (Exception ex) { Debug.LogError($"[mobile] inv-process {ex.GetType().Name}: {ex.Message}"); }
                 UiText.WarmTree(inv);
             }
+            if (chr != null && chr.Visible)
+            {
+                UiText.WarmTree(chr); // 装备窗口无 Process（BeforeDraw 刷标签），仅预热字形
+            }
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
             if (main != null) main.Draw();
             if (inv != null && inv.Visible) inv.Draw();
+            if (chr != null && chr.Visible) chr.Draw();
             _bag.Render(_bagTex);
+            _equip.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -262,7 +279,8 @@ namespace Crystal.Client.Rendering
             if (GameSession.State != GameSessionState.InGame || GameSession.User == null) return;
             var scene = GameScene.Scene;
             var inv = scene != null ? scene.InventoryDialog : null;
-            bool bagOpen = inv != null && inv.Visible; // 面板打开期间摇杆停用（背包按钮仍可点击关闭）
+            var chr = scene != null ? scene.CharacterDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -283,7 +301,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui),               // 背包按钮（ui 空间）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui), // 背包/装备按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     Joystick = (id, ph, rawPos) => _joystick.OnTouch(id, ph, rawPos),   // 摇杆（raw 空间）
@@ -332,6 +350,8 @@ namespace Crystal.Client.Rendering
                 {
                     if (!inv.Visible)
                     {
+                        var chr = GameScene.Scene != null ? GameScene.Scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide(); // 面板互斥：开背包关装备窗口
                         inv.RefreshInventory();
                         inv.Process();
                     }
@@ -349,6 +369,41 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] bag-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] bag-{(open ? "open" : "close")} visible={inv.Visible}");
+        }
+
+        // 装备窗口开/关（增量3）：切换 CharacterDialog.Visible（默认角色页）。打开时 Cancel 摇杆/HUD
+        // （防手指锁残留）+ 清选中；关闭同背包（Hide + 清选中）。日志 [mobile] char-open/close 供
+        // androidverify 断言。装备格双击卸下、背包格双击穿戴走 MirItemCell 鼠标链（GameScene 双击分发）。
+        void ToggleChar(bool open)
+        {
+            var chr = GameScene.Scene != null ? GameScene.Scene.CharacterDialog : null;
+            if (chr == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!chr.Visible)
+                    {
+                        var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide(); // 面板互斥：开装备窗口关背包
+                        chr.ShowCharacterPage();
+                        chr.Visible = true;
+                        GameScene.SelectedCell = null;
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                    }
+                }
+                else
+                {
+                    GameScene.SelectedCell = null;
+                    chr.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] char-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] char-{(open ? "open" : "close")} visible={chr.Visible}");
         }
 
         // 位置心跳：进图后节流打印实际坐标（androidverify 解析出生点 → 按实际坐标重裁区域 → 二次 push 重启）。

@@ -139,6 +139,47 @@ namespace Client.MirObjects
             RefreshStats();
         }
 
+        // 装备回流（8-2-3）：S.EquipItem 成功确认后客户端同构交换——装备槽位物品回背包、
+        // 背包物品入槽（服务器权威已交换，此处镜像保 UI 一致）。背包格定位用 UniqueID
+        // （目标槽位 Item 可能已因穿戴顶替到背包）。RefreshStats 重算外观/属性（SetLibraries/
+        // RefreshEquipmentStats 既有）。
+        public void ApplyEquip(S.EquipItem p)
+        {
+            int from = -1;
+            for (int i = 0; i < Inventory.Length; i++)
+            {
+                if (Inventory[i] == null || Inventory[i].UniqueID != p.UniqueID) continue;
+                from = i;
+                break;
+            }
+            if (from < 0 || p.To < 0 || p.To >= Equipment.Length) return;
+
+            var item = Inventory[from];
+            Inventory[from] = Equipment[p.To];
+            Equipment[p.To] = item;
+
+            RefreshStats();
+        }
+
+        // 卸下回流（8-2-3）：S.RemoveItem 成功确认后装备格物品迁入背包目标格（客户端镜像）。
+        public void ApplyRemove(S.RemoveItem p)
+        {
+            int from = -1;
+            for (int i = 0; i < Equipment.Length; i++)
+            {
+                if (Equipment[i] == null || Equipment[i].UniqueID != p.UniqueID) continue;
+                from = i;
+                break;
+            }
+            if (from < 0 || p.To < 0 || p.To >= Inventory.Length) return;
+
+            var item = Equipment[from];
+            Equipment[from] = null;
+            Inventory[p.To] = item;
+
+            RefreshStats();
+        }
+
         public override void SetLibraries()
         {
             base.SetLibraries();
