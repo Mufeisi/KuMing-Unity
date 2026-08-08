@@ -1727,6 +1727,16 @@ namespace Crystal.Client.Rendering
                 scene.FishingDialog = fishing;
                 var fishingStatus = new FishingStatusDialog { Parent = scene, Visible = false };
                 scene.FishingStatusDialog = fishingStatus;
+                // 设置三件套（8-8-4）：ChatOptionDialog（筛选/透明，主设置页）+ KeyboardLayoutDialog
+                // （键位查看/重置）+ HelpDialog（帮助）常驻创建默认隐藏。设置纯本地（Settings 静态 +
+                // CMain.InputKeys.Save INI，零网络包）。移动端入口=设置按钮开 ChatOptionDialog；
+                // 键位改键的虚拟键输入面板（合成 KeyEventArgs 喂 CheckNewInput）登记 backlog。
+                var chatOption = new ChatOptionDialog { Parent = scene, Visible = false };
+                scene.ChatOptionDialog = chatOption;
+                var keyLayout = new KeyboardLayoutDialog { Parent = scene, Visible = false };
+                scene.KeyboardLayoutDialog = keyLayout;
+                var help = new HelpDialog { Parent = scene, Visible = false };
+                scene.HelpDialog = help;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)
