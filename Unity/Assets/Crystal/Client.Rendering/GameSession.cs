@@ -794,6 +794,14 @@ namespace Crystal.Client.Rendering
                 // Show→TargetMyLocation→SetTargetMap 按需发 C.RequestMapInfo；S.NewMapInfo 回填记录。
                 var bigMap = new BigMapDialog { Parent = scene, Visible = false };
                 scene.BigMapDialog = bigMap;
+                // 小地图（8-4-3）：常驻创建（HUD 右上角，旧客户端 GameScene ctor 直接建，Visible 默认 true）。
+                // 档位切换/大地图按钮走 MirButton.Click（TouchInputAdapter 鼠标链）；坐标/地图名每帧 Process。
+                var mini = new MiniMapDialog { Parent = scene };
+                scene.MiniMapDialog = mini;
+                // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
+                // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
+                if (scene.DuraStatusPanel == null)
+                    scene.DuraStatusPanel = new MirImageControl { Parent = scene, Visible = false };
             }
             catch (Exception ex)
             {

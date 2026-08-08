@@ -252,6 +252,7 @@ namespace Crystal.Client.Rendering
             var qdet = scene != null ? scene.QuestDetailDialog : null;
             var qtrk = scene != null ? scene.QuestTrackingDialog : null;
             var bigMap = scene != null ? scene.BigMapDialog : null;
+            var mini = scene != null ? scene.MiniMapDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -275,10 +276,18 @@ namespace Crystal.Client.Rendering
             if (qtrk != null && qtrk.Visible) UiText.WarmTree(qtrk);
             // 大地图（8-4-2）：开才预热字形（TitleLabel/坐标标签/行名），批前须合帧。
             if (bigMap != null && bigMap.Visible) UiText.WarmTree(bigMap);
+            // 小地图（8-4-3）：常驻 HUD（旧客户端 GameScene.Process 每帧调）。Process 先刷坐标/地图名
+            // → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存（同 main/inv 模式）。
+            if (mini != null)
+            {
+                try { mini.Process(); } catch (Exception ex) { Debug.LogError($"[mobile] mini-process {ex.GetType().Name}: {ex.Message}"); }
+                UiText.WarmTree(mini);
+            }
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
             if (main != null) main.Draw();
+            if (mini != null) mini.Draw(); // 小地图常驻（右上角，Visible 默认 true），背包面板打开时仍显示
             if (inv != null && inv.Visible) inv.Draw();
             if (chr != null && chr.Visible) chr.Draw();
             if (qdia != null && qdia.Visible) qdia.Draw();
