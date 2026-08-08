@@ -1,1 +1,1 @@
-﻿PC 性能基线（2026-08-08 18:51:39）：fps avg=49.8 min=16.4 p95=58.6 logic=19.89ms session=19.82ms render=0ms objs=0 samples=10 进图行距=4 挂机=60 s
+﻿PC 性能基线（2026-08-08 20:36:08，黑屏修复后）：fps avg=59 min=47.2 p95=60 logic=0.88ms session=0.78ms render=5.3ms objs=10 samples=4 进图行距=4 挂机=30 s

@@ -199,6 +199,7 @@ MonoBehaviour:
   - {fileID: 4800000, guid: 33ed625b4136b8f4d89c8729c4c29bc5, type: 3}
   - {fileID: 4800000, guid: 1143195efb216084aa06832d76103b7b, type: 3}
   - {fileID: 4800000, guid: ee0c06897778ce747b60cc092450fbe5, type: 3}
+  - {fileID: 4800000, guid: 6ae06f3836e596f4a90dea078be0487c, type: 3}
 --- !u!20 &1258334708
 Camera:
   m_ObjectHideFlags: 0
