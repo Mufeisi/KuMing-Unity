@@ -272,6 +272,27 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.WorldMapSetup:
                     WorldMapSetup((S.WorldMapSetupInfo)p);
                     break;
+                case (short)ServerPacketIds.SwitchGroup:
+                    GroupSwitch((S.SwitchGroup)p);
+                    break;
+                case (short)ServerPacketIds.DeleteGroup:
+                    GroupDelete();
+                    break;
+                case (short)ServerPacketIds.DeleteMember:
+                    GroupDeleteMember((S.DeleteMember)p);
+                    break;
+                case (short)ServerPacketIds.GroupInvite:
+                    GroupInvite((S.GroupInvite)p);
+                    break;
+                case (short)ServerPacketIds.AddMember:
+                    GroupAddMember((S.AddMember)p);
+                    break;
+                case (short)ServerPacketIds.GroupMembersMap:
+                    GroupMembersMap((S.GroupMembersMap)p);
+                    break;
+                case (short)ServerPacketIds.SendMemberLocation:
+                    GroupMemberLocation((S.SendMemberLocation)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -563,6 +584,89 @@ namespace Crystal.Client.Rendering
             GameScene.TeleportToNPCCost = (uint)info.TeleportToNPCCost;
         }
 
+        // ===== 组队（8-6-1）=====
+        // 旧客户端 GameScene 组队包处理逐字移植（SwitchGroup/DeleteGroup/DeleteMember/GroupInvite/
+        // AddMember/GroupMembersMap/SendMemberLocation）。分发刷新 GroupDialog 静态数据
+        // （AllowGroup/GroupList/GroupMembersMap）+ 大地图成员雷达点（BigMapViewPort.PlayerLocations，
+        // 8-4-2 未接雷达渲染，仅维护字典供后续）。系统提示走 ChatDialog.ReceiveChat（常驻，缺文本回退键名）。
+        // S.SwitchGroup：允许组队开关回声。关组队且已在队伍 → 本地同步清（服务器 LeaveGroup 已推 DeleteGroup）。
+        internal static void GroupSwitch(S.SwitchGroup p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || scene.GroupDialog == null) return;
+            GroupDialog.AllowGroup = p.AllowGroup;
+            if (!p.AllowGroup && GroupDialog.GroupList.Count > 0)
+                GroupDelete();
+        }
+
+        internal static void GroupDelete()
+        {
+            GroupDialog.GroupList.Clear();
+            GroupDialog.GroupMembersMap.Clear();
+            BigMapViewPort.PlayerLocations.Clear();
+            var chat = GameScene.Scene?.ChatDialog;
+            if (chat != null)
+                chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouHaveLeftGroup), ChatType.Group);
+        }
+
+        internal static void GroupDeleteMember(S.DeleteMember p)
+        {
+            GroupDialog.GroupList.Remove(p.Name);
+            GroupDialog.GroupMembersMap.Remove(p.Name);
+            BigMapViewPort.PlayerLocations.Remove(p.Name);
+            var chat = GameScene.Scene?.ChatDialog;
+            if (chat != null)
+                chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerHasLeftGroup, p.Name), ChatType.Group);
+        }
+
+        // S.GroupInvite：被邀弹 MirMessageBox YesNo（旧客户端 GroupInvite 逐字移植）。接受 →
+        // C.GroupInvite{true} + 开组队窗（GroupDialog.Show 带 Visible 守卫）；拒绝 → C.GroupInvite{false}。
+        internal static void GroupInvite(S.GroupInvite p)
+        {
+            var box = new MirMessageBox(
+                GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.DoYouWantGroupWithPlayer, p.Name),
+                MirMessageBoxButtons.YesNo);
+            box.YesButton.Click += (o, e) =>
+            {
+                Network.Enqueue(new C.GroupInvite { AcceptInvite = true });
+                var dlg = GameScene.Scene?.GroupDialog;
+                if (dlg != null) dlg.Show();
+            };
+            box.NoButton.Click += (o, e) => Network.Enqueue(new C.GroupInvite { AcceptInvite = false });
+            box.Show();
+        }
+
+        internal static void GroupAddMember(S.AddMember p)
+        {
+            if (!GroupDialog.GroupList.Contains(p.Name)) GroupDialog.GroupList.Add(p.Name);
+            var chat = GameScene.Scene?.ChatDialog;
+            if (chat != null)
+                chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerHasJoinedGroup, p.Name), ChatType.Group);
+        }
+
+        internal static void GroupMembersMap(S.GroupMembersMap p)
+        {
+            if (!GroupDialog.GroupMembersMap.ContainsKey(p.PlayerName))
+                GroupDialog.GroupMembersMap.Add(p.PlayerName, p.PlayerMap);
+            else
+            {
+                GroupDialog.GroupMembersMap.Remove(p.PlayerName);
+                GroupDialog.GroupMembersMap.Add(p.PlayerName, p.PlayerMap);
+            }
+        }
+
+        internal static void GroupMemberLocation(S.SendMemberLocation p)
+        {
+            var loc = new MPoint(p.MemberLocation.X, p.MemberLocation.Y); // 封包 Point 转 MPoint（同 ObjectUserInformation 范式）
+            if (!BigMapViewPort.PlayerLocations.ContainsKey(p.MemberName))
+                BigMapViewPort.PlayerLocations.Add(p.MemberName, loc);
+            else
+            {
+                BigMapViewPort.PlayerLocations.Remove(p.MemberName);
+                BigMapViewPort.PlayerLocations.Add(p.MemberName, loc);
+            }
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -803,6 +907,11 @@ namespace Crystal.Client.Rendering
                 // 档位切换/大地图按钮走 MirButton.Click（TouchInputAdapter 鼠标链）；坐标/地图名每帧 Process。
                 var mini = new MiniMapDialog { Parent = scene };
                 scene.MiniMapDialog = mini;
+                // 组队面板（8-6-1）：常驻创建默认隐藏（同 NPCDialog 模式）。移动端组队按钮 Toggle
+                // Show/Hide；S.SwitchGroup/AddMember/DeleteMember/DeleteGroup 分发刷新静态数据；
+                // S.GroupInvite 弹 MirMessageBox YesNo（接受 → C.GroupInvite{true}）。
+                var group = new GroupDialog { Parent = scene, Visible = false };
+                scene.GroupDialog = group;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

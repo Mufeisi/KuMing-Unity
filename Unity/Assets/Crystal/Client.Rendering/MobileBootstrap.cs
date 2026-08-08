@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Client;
+using Client.MirControls;
 using Client.MirNetwork;
 using Client.MirScenes;
 using UnityEngine;
@@ -46,8 +47,9 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
         readonly MobileBag _quest = new MobileBag(1280, 720);  // 任务按钮（8-4-1）：装备下方开/关任务日记（蓝 tint）
         readonly MobileBag _map = new MobileBag(1280, 720);    // 大地图按钮（8-4-2）：任务下方开/关大地图（紫 tint）
+        readonly MobileBag _group = new MobileBag(1280, 720);  // 组队按钮（8-6-1）：地图下方开/关组队面板（红 tint）
         readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
-        Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
+        Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
         {
@@ -99,6 +101,11 @@ namespace Crystal.Client.Rendering
             _map.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 3));
             _map.TintOpen = new Color(0.85f, 0.6f, 1f, 0.95f);
             _map.TintClosed = new Color(0.6f, 0.35f, 0.85f, 0.95f);
+            // 组队按钮（8-6-1）：地图按钮正下方，红 tint 与背包黄/装备绿/任务蓝/地图紫区分；开/关组队面板。
+            _group.OnToggle = ToggleGroup;
+            _group.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 4));
+            _group.TintOpen = new Color(1f, 0.5f, 0.5f, 0.95f);
+            _group.TintClosed = new Color(0.8f, 0.3f, 0.3f, 0.95f);
             // 聊天（8-5-2）：底部左缘聊天/频道按钮。OnOpenInput=开输入框（首次开注入当前频道前缀）
             // + 弹软键盘；OnChannel=切换频道前缀（输入框开着则重写文本前缀并重开软键盘使初始文本生效，
             // 服务器按 !/@ 前缀分频道）。发送走软键盘 Enter（SoftKeyboardBridge Submitted → ChatTextBox_KeyPress
@@ -110,12 +117,23 @@ namespace Crystal.Client.Rendering
             MobileUiAdapter.BackHandler = () =>
             {
                 var scene = GameScene.Scene;
+                // 瞬态模态（8-6-1）：MirMessageBox/MirInputBox 弹窗（组队邀请/成员名输入）挂 scene 树且
+                // Modal 阻断下层，Back → Esc 语义（MirMessageBox YesNo→No 拒绝，MirInputBox→Cancel 取消）。
+                var modal = FindModal(scene);
+                if (modal != null)
+                {
+                    modal.OnKeyPress(new KeyPressEventArgs((char)Keys.Escape));
+                    return true;
+                }
                 // 聊天输入（8-5-2）：输入框开（软键盘弹出中）Back 先关输入（对齐 PC Escape 隐藏清空语义）。
                 var chat = scene != null ? scene.ChatDialog : null;
                 if (chat != null && MobileChat.CloseInput(chat)) return true;
                 // 大地图（8-4-2）：移动端地图按钮打开，Back 关闭（顶层先关）+ 打断在途寻路。
                 var bigMap = scene != null ? scene.BigMapDialog : null;
                 if (bigMap != null && bigMap.Visible) { bigMap.Hide(); _autoPath.Cancel(); return true; }
+                // 组队面板（8-6-1）：移动端组队按钮打开，Back 关闭（同任务/地图按钮面板）。
+                var group = scene != null ? scene.GroupDialog : null;
+                if (group != null && group.Visible) { group.Hide(); return true; }
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
                 // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
@@ -198,7 +216,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true));
             // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
             // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
             // 避免寻路激活中重开地图被本帧立刻关闭。
@@ -254,6 +272,8 @@ namespace Crystal.Client.Rendering
                 _map.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_chat.ScreenW != GameRuntime.ScreenW || _chat.ScreenH != GameRuntime.ScreenH)
                 _chat.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_group.ScreenW != GameRuntime.ScreenW || _group.ScreenH != GameRuntime.ScreenH)
+                _group.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -266,6 +286,7 @@ namespace Crystal.Client.Rendering
             var bigMap = scene != null ? scene.BigMapDialog : null;
             var mini = scene != null ? scene.MiniMapDialog : null;
             var chat = scene != null ? scene.ChatDialog : null;
+            var group = scene != null ? scene.GroupDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -298,6 +319,17 @@ namespace Crystal.Client.Rendering
             }
             // 聊天窗（8-5-2）：常驻底部（旧客户端 GameScene 每帧 Draw），ChatLines 文本标签批前须合帧。
             if (chat != null) UiText.WarmTree(chat);
+            // 组队面板（8-6-1）：开才预热字形（成员名/标题标签），批前须合帧（同任务/地图面板模式）。
+            if (group != null && group.Visible) UiText.WarmTree(group);
+            // 瞬态模态（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树（Modal=true），移动端无
+            // 独立渲染通路，批前统一预热字形；ActiveModal 无缓存槽位，遍历 Controls 即得唯一模态。
+            var modalControls = scene != null ? scene.Controls : null;
+            if (modalControls != null)
+                for (int i = 0; i < modalControls.Count; i++)
+                {
+                    var mc = modalControls[i];
+                    if (mc != null && mc.Visible && mc.Modal) UiText.WarmTree(mc);
+                }
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
@@ -311,11 +343,19 @@ namespace Crystal.Client.Rendering
             if (qdet != null && qdet.Visible) qdet.Draw();
             if (qtrk != null && qtrk.Visible) qtrk.Draw();
             if (bigMap != null && bigMap.Visible) bigMap.Draw();
+            if (group != null && group.Visible) group.Draw(); // 组队面板（8-6-1）：与任务/地图同层（背包面板之上）
+            if (modalControls != null)
+                for (int i = 0; i < modalControls.Count; i++)
+                {
+                    var mc = modalControls[i];
+                    if (mc != null && mc.Visible && mc.Modal) mc.Draw(); // 瞬态模态最顶层（组队邀请/成员名输入）
+                }
             _bag.Render(_bagTex);
             _equip.Render(_bagTex);
             _quest.Render(_bagTex);
             _map.Render(_bagTex);
             _chat.Render(_chatTex);
+            _group.Render(_groupTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -355,6 +395,7 @@ namespace Crystal.Client.Rendering
             _mpTex = SolidTexture(bw, bh);
             _bagTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 背包按钮白色方块（Render tint 上色）
             _chatTex = SolidTexture((int)MobileChat.ButtonW, (int)MobileChat.ButtonH); // 聊天按钮白色方块（Render tint 上色）
+            _groupTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 组队按钮白色方块（同背包按钮尺寸）
         }
 
         static Texture2D SolidTexture(int w, int h)
@@ -394,7 +435,8 @@ namespace Crystal.Client.Rendering
             var qlist = scene != null ? scene.QuestListDialog : null;
             var qdet = scene != null ? scene.QuestDetailDialog : null;
             var bigMap = scene != null ? scene.BigMapDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var group = scene != null ? scene.GroupDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -415,7 +457,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -604,6 +646,58 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] map-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] map-{(open ? "open" : "close")} visible={bigMap.Visible}");
+        }
+
+        // 组队面板开/关（8-6-1）：切换 GroupDialog.Visible（静态数据由 S.SwitchGroup/AddMember/
+        // DeleteMember/DeleteGroup/GroupMembersMap 分发维护）。打开走 Show + 面板互斥（关背包/装备）
+        // + Cancel 摇杆/HUD/拾取/寻路。日志 [mobile] group-open/close 供 E2E 数据断言。
+        void ToggleGroup(bool open)
+        {
+            var scene = GameScene.Scene;
+            var group = scene != null ? scene.GroupDialog : null;
+            if (group == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!group.Visible)
+                    {
+                        var inv = scene != null ? scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide();
+                        var chr = scene != null ? scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide();
+                        group.Show();
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                        _autoPath.Cancel();
+                    }
+                }
+                else
+                {
+                    group.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] group-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] group-{(open ? "open" : "close")} visible={group.Visible}");
+        }
+
+        // 瞬态模态查找（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树且 Modal=true 阻断下层。
+        // 移动端无 Esc 键，Back → Esc 语义（YesNo→No 拒绝，Input→Cancel 取消）前先定位最顶层模态。
+        static MirControl FindModal(GameScene scene)
+        {
+            if (scene == null) return null;
+            var controls = scene.Controls;
+            if (controls == null) return null;
+            for (int i = 0; i < controls.Count; i++)
+            {
+                var c = controls[i];
+                if (c != null && c.Visible && c.Modal) return c;
+            }
+            return null;
         }
 
         // 位置心跳：进图后节流打印实际坐标（androidverify 解析出生点 → 按实际坐标重裁区域 → 二次 push 重启）。

@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using Crystal.Client.Core.MirMath;
 using Client.MirControls;
 using Client.MirGraphics;
+using Client.MirNetwork;
 using Client.MirObjects;
 using Client.MirSounds;
+using C = ClientPackets;
 
 namespace Client.MirScenes.Dialogs
 {
@@ -12,8 +14,8 @@ namespace Client.MirScenes.Dialogs
     // Prguse 120 组队 frame + Title 5 标题 + Prguse2 360 关闭 + 允许组队 Switch（114-119 状态切换）
     // + 添加/移除成员按钮（Title 133-135/136-138，未入队/队长态切 130-132）+ 成员 8 格标签
     // （Globals.MaxGroup）+ 成员 Hint（GroupMembersMap 在线位置）。
-    // 裁剪：MirInputBox（未移植弹窗基类）→ Add/Del 私有弹输入框方法删除；
-    // 网络交互（C.SwitchGroup/C.AddMember/C.DelMember）→ 点击留空（探针为渲染探针）。
+    // 网络交互（8-6-1 接回）：Switch 直发 C.SwitchGroup；Add/Del 弹 MirInputBox（2026-08-07 移植）
+    // 输入成员名发 C.AddMember/C.DelMember；客户端侧队长/人数守卫走 ChatDialog.ReceiveChat。
     public sealed class GroupDialog : MirImageControl
     {
         public static bool AllowGroup;
@@ -84,7 +86,8 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupSwitch)
             };
-            // SwitchButton.Click 原发包 C.SwitchGroup（网络交互，探针不驱动）→ 裁剪。
+            // SwitchButton.Click 原发包 C.SwitchGroup（8-6-1 接回：取反允许组队开关，服务器回声 S.SwitchGroup）。
+            SwitchButton.Click += (o, e) => Network.Enqueue(new C.SwitchGroup { AllowGroup = !AllowGroup });
 
             AddButton = new MirButton
             {
@@ -97,7 +100,8 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupAdd)
             };
-            // AddButton.Click 原弹 MirInputBox 输入成员名（未移植）→ 裁剪。
+            // AddButton.Click 原弹 MirInputBox 输入成员名（8-6-1 接回：MirInputBox 已移植）→ 发 C.AddMember。
+            AddButton.Click += (o, e) => AddMember();
 
             DelButton = new MirButton
             {
@@ -110,7 +114,8 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupRemove)
             };
-            // DelButton.Click 原弹 MirInputBox 输入成员名（未移植）→ 裁剪。
+            // DelButton.Click 原弹 MirInputBox 输入成员名（8-6-1 接回）→ 发 C.DelMember。
+            DelButton.Click += (o, e) => DelMember();
 
             BeforeDraw += GroupPanel_BeforeDraw;
 
@@ -170,6 +175,64 @@ namespace Client.MirScenes.Dialogs
             }
         }
 
-        // 原 public AddMember(string) 发包 C.AddMember（网络交互，探针不驱动）→ 裁剪。
+        // 原 public AddMember(string) 发包 C.AddMember（8-6-1 接回：键盘 AddGroupMember 直发用）。
+        public void AddMember(string name)
+        {
+            if (GroupList.Count >= Globals.MaxGroup)
+            {
+                GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupHasMaxMembers), ChatType.System);
+                return;
+            }
+            if (GroupList.Count > 0 && GroupList[0] != MapObject.User.Name)
+            {
+                GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouAreNotGroupLeader), ChatType.System);
+                return;
+            }
+
+            Network.Enqueue(new C.AddMember { Name = name });
+        }
+
+        // 弹 MirInputBox 输入成员名（8-6-1 接回：MirInputBox 已移植）→ 确定发 C.AddMember。
+        private void AddMember()
+        {
+            if (GroupList.Count >= Globals.MaxGroup)
+            {
+                GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupHasMaxMembers), ChatType.System);
+                return;
+            }
+            if (GroupList.Count > 0 && GroupList[0] != MapObject.User.Name)
+            {
+                GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouAreNotGroupLeader), ChatType.System);
+                return;
+            }
+
+            MirInputBox inputBox = new MirInputBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupAddEnterName));
+
+            inputBox.OKButton.Click += (o, e) =>
+            {
+                Network.Enqueue(new C.AddMember { Name = inputBox.InputTextBox.Text });
+                inputBox.Dispose();
+            };
+            inputBox.Show();
+        }
+
+        // 弹 MirInputBox 输入成员名（8-6-1 接回）→ 确定发 C.DelMember。
+        private void DelMember()
+        {
+            if (GroupList.Count > 0 && GroupList[0] != MapObject.User.Name)
+            {
+                GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouAreNotGroupLeader), ChatType.System);
+                return;
+            }
+
+            MirInputBox inputBox = new MirInputBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.GroupRemoveEnterName));
+
+            inputBox.OKButton.Click += (o, e) =>
+            {
+                Network.Enqueue(new C.DelMember { Name = inputBox.InputTextBox.Text });
+                inputBox.Dispose();
+            };
+            inputBox.Show();
+        }
     }
 }
