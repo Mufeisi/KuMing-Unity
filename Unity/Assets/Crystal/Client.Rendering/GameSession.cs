@@ -296,6 +296,21 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.FriendUpdate:
                     FriendUpdate((S.FriendUpdate)p);
                     break;
+                case (short)ServerPacketIds.GuildStatus:
+                    GuildStatus((S.GuildStatus)p);
+                    break;
+                case (short)ServerPacketIds.GuildNoticeChange:
+                    GuildNoticeChange((S.GuildNoticeChange)p);
+                    break;
+                case (short)ServerPacketIds.GuildMemberChange:
+                    GuildMemberChange((S.GuildMemberChange)p);
+                    break;
+                case (short)ServerPacketIds.GuildInvite:
+                    GuildInvite((S.GuildInvite)p);
+                    break;
+                case (short)ServerPacketIds.GuildExpGain:
+                    GuildExpGain((S.GuildExpGain)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -680,6 +695,95 @@ namespace Crystal.Client.Rendering
             if (dlg.Visible) dlg.Update(false);
         }
 
+        // ===== 行会（8-6-3）=====
+        // 旧客户端 GameScene 行会包处理逐字移植（GuildStatus/GuildNoticeChange/GuildMemberChange/
+        // GuildInvite/GuildExpGain）。分发刷新 GuildDialog 状态页/公告页 + 同步 User.GuildName/
+        // GuildRankName（EnsureUser 已保证 MapObject.User/MapControl.User/GameScene.User 同一实例，
+        // StatusPage.BeforeDraw 读 MapControl.User）。系统提示走 ChatDialog.ReceiveChat（缺文本回退键名）。
+        // S.GuildStatus：行会整表状态回声。同步 User 行会名/职务 + 填状态页（Level/Experience/
+        // MemberCount/MaxMembers）；首次入会标记 Notice/Members 变更（Show 才拉公告）。
+        internal static void GuildStatus(S.GuildStatus p)
+        {
+            var u = MapObject.User;
+            if (u != null)
+            {
+                bool guildChange = u.GuildName != p.GuildName;
+                u.GuildName = p.GuildName;
+                u.GuildRankName = p.GuildRankName;
+                if (guildChange && p.GuildName != "")
+                {
+                    GuildDialog.NoticeChanged = true;
+                    GuildDialog.MembersChanged = true;
+                }
+            }
+            var dlg = GameScene.Scene?.GuildDialog;
+            if (dlg == null) return;
+            if (p.GuildName == "") { dlg.Hide(); return; }
+            dlg.Level = p.Level;
+            dlg.Experience = p.Experience;
+            dlg.MaxExperience = p.MaxExperience;
+            dlg.MemberCount = p.MemberCount;
+            dlg.MaxMembers = p.MaxMembers;
+        }
+
+        // S.GuildNoticeChange：update==-1 标记公告变更（下次 Show 拉整表）；否则整表回声填公告页。
+        internal static void GuildNoticeChange(S.GuildNoticeChange p)
+        {
+            var dlg = GameScene.Scene?.GuildDialog;
+            if (dlg == null) return;
+            if (p.update == -1) GuildDialog.NoticeChanged = true;
+            else dlg.NoticeChange(p.notice);
+        }
+
+        // S.GuildInvite：被邀弹 MirMessageBox YesNo（旧客户端 GuildInvite 逐字移植）。
+        // 接受 → C.GuildInvite{true}；拒绝 → C.GuildInvite{false}（服务器收受后回 S.GuildStatus 整表）。
+        internal static void GuildInvite(S.GuildInvite p)
+        {
+            var box = new MirMessageBox(
+                GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.JoinGuildPrompt, p.Name),
+                MirMessageBoxButtons.YesNo);
+            box.YesButton.Click += (o, e) => Network.Enqueue(new C.GuildInvite { AcceptInvite = true });
+            box.NoButton.Click += (o, e) => Network.Enqueue(new C.GuildInvite { AcceptInvite = false });
+            box.Show();
+        }
+
+        // S.GuildMemberChange：成员事件（0 下线/1 上线/2 加入/3 除名/4 离开/5 职务变化/6 新职务/
+        // 7 职务选项/8 我的职务/255 整表）。移动端仅公告/状态两页 → 处理提示 + 加入计数，其余静默。
+        internal static void GuildMemberChange(S.GuildMemberChange p)
+        {
+            var chat = GameScene.Scene?.ChatDialog;
+            var dlg = GameScene.Scene?.GuildDialog;
+            switch (p.Status)
+            {
+                case 1:
+                    if (chat != null)
+                        chat.ReceiveChat(string.Format("{0} 已登录游戏", p.Name), ChatType.Guild);
+                    break;
+                case 2:
+                    if (chat != null)
+                        chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerJoinedGuild, p.Name), ChatType.Guild);
+                    if (dlg != null) dlg.MemberCount++;
+                    break;
+                case 3:
+                    if (chat != null)
+                        chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerRemovedFromGuild, p.Name), ChatType.Guild);
+                    break;
+                case 4:
+                    if (chat != null)
+                        chat.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerLeftGuild, p.Name), ChatType.Guild);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // S.GuildExpGain：行会经验回声 → 累加状态页经验（旧客户端同款）。
+        internal static void GuildExpGain(S.GuildExpGain p)
+        {
+            var dlg = GameScene.Scene?.GuildDialog;
+            if (dlg != null) dlg.Experience += p.Amount;
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -932,6 +1036,11 @@ namespace Crystal.Client.Rendering
                 scene.MemoDialog = memo;
                 var friend = new FriendDialog { Parent = scene, Visible = false };
                 scene.FriendDialog = friend;
+                // 行会面板（8-6-3）：常驻创建默认隐藏（同 NPCDialog 模式）。Show 发 C.RequestGuildInfo
+                // {Type=0} 拉公告（NoticeChanged 标记 + 5s 节流）；S.GuildStatus/GuildNoticeChange/
+                // GuildMemberChange/GuildInvite/GuildExpGain 分发刷新状态页/公告页。
+                var guild = new GuildDialog { Parent = scene, Visible = false };
+                scene.GuildDialog = guild;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

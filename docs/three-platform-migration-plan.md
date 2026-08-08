@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）；第5项 增量2 聊天触控（chatverify 11/11 + safearea/softkeyboard/minimap/ui 回归 PASS，见任务 `8-5-2`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）；第5项 增量2 聊天触控（chatverify 11/11 + safearea/softkeyboard/minimap/ui 回归 PASS，见任务 `8-5-2`）；第6项 增量1 组队触控（groupverify 16/16 + gamesession/ui 回归 PASS，见任务 `8-6-1`）；第6项 增量2 好友触控（friendverify 16/16 + gamesession/ui 回归 PASS，见任务 `8-6-2`）；第6项 增量3 行会触控（guildverify 17/17 + gamesession/chat/group/friend/ui/net-ui 回归 PASS，见任务 `8-6-3`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第6项 增量2 好友流程触控化（8-6-2 ✅）已完成。下一增量 8-6-3 行会面板触控化。阶段8 第4/5项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅ + 8-5-1 软键盘+安全区 ✅ + 8-5-2 聊天 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
+**当前在途**：阶段8 第6项 已全收口（8-6-1 组队 ✅ + 8-6-2 好友 ✅ + 8-6-3 行会 ✅）。下一增量 8-7-1 交易窗口触控化。阶段8 第4/5项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅ + 8-5-1 软键盘+安全区 ✅ + 8-5-2 聊天 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -110,7 +110,7 @@
 | 8-5-2 | 聊天触控化（频道/发送） | 8·第5项 | ✅ | 8-5-1 | 1d |
 | 8-6-1 | 组队流程触控化 | 8·第6项 | ✅ | 8-3-1 | 1d |
 | 8-6-2 | 好友流程触控化 | 8·第6项 | ✅ | 8-6-1 | 1d |
-| 8-6-3 | 行会面板触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
+| 8-6-3 | 行会面板触控化 | 8·第6项 | ✅ | 8-6-1 | 1d |
 | 8-7-1 | 交易窗口触控化 | 8·第7项 | 🔲 | 8-6-1 | 1d |
 | 8-7-2 | 邮件系统触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
 | 8-7-3 | 拍卖行触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
@@ -379,14 +379,15 @@
 - 实现：`FriendDialog` 网络交互接回（PC 迭代包6 探针留空处补全）：Add 弹 `MirInputBox`（好友/黑名单 tab 分流提示文案 `FriendEnterBlockName`/`FriendEnterAddName`）→ `C.AddFriend{Name,Blocked}`；Remove 弹 `MirMessageBox` YesNo 确认 → `C.RemoveFriend{CharacterIndex}`；MemoButton 开 `MemoDialog`（预填 `Friend.Memo`），OK → `C.AddMemo{CharacterIndex,Memo}`；Whisper 离线守卫（`PlayerNotOnline` 系统消息）+ 走 `WhisperAction` seam（移动端接 `MobileChat.OpenWhisper` 填 `ChatTextBox "/名字 "` + `SetChatText` 聚焦 + 弹软键盘，PC 语义直填输入框）；Show → `C.RefreshFriends` 拉整表。`GameSession` 补 `S.FriendUpdate` 派发（`internal static` 供探针）：整表回声填 `FriendDialog.Friends`，面板开着 `Update(false)` 保选中重建行。`InitInGameDialogs` 常驻创建 `MemoDialog`+`FriendDialog`（默认隐藏）。`MobileChat` 新增 `OpenWhisper` static helper。`MobileBootstrap` 好友入口（`_friend` 按钮栈，青 tint，背包列下移 5 格）+ UiConsumer 链 + `BackHandler`（先关 `MemoDialog` 再关 `FriendDialog`）+ `uiOpen`/`bagOpen` 守卫 + RenderHud 每帧 `friend.Draw()`+`memo.Draw()`+`UiText.WarmTree`。`FriendVerify` 16/16（常驻创建/Show 发 Refresh/好友 tab Add 弹窗 OK 发包/黑名单 tab Blocked=true/回声隐藏填充+可见重建/行点选中+迁移/Remove 确认发包/未选中守卫/Whisper 在线 seam/离线守卫/Memo 预填 OK 发包/黑名单 tab 过滤/12 行翻页 Next-Prev/取消不发包/Close 面板关+Memo 联动/RouteTouch 好友按钮消费不喂摇杆）。
 
 #### 8-6-3 行会面板触控化
-状态：🔲｜预估：1d｜依赖：8-6-1
+状态：✅｜预估：1d｜依赖：8-6-1
 
 - 目标：行会公告/状态页查看 触控。
 - 开发：复用 PC 迭代包6；滚动条触控（MirControl.Scrollable）。
 - 测试：探针（面板渲染/滚动）。
 - 验证：探针 PASS + PC 回归 + 冒烟。
-- 提交：`feat(阶段8): 行会面板触控化`。
+- 提交：`feat(阶段8): 行会流程触控化`。
 - 验收：真机看行会面板、滚动公告。
+- 实现：`GuildDialog` 网络交互接回（PC 迭代包6 探针留空处补全）：Show 未加入行会（`string.IsNullOrEmpty(GuildName)`）弹 `MirMessageBox` OK（`NotInGuild`）不打开；已加入 → Visible + `NoticeChanged && LastNoticeRequest<Time` 时发 `C.RequestGuildInfo{Type=0}`（5s 节流，`LastNoticeRequest=Time+5000`）。公告滚动纯 C# 化（`InputTextBox.GetFirstCharIndexFromLine/ScrollToCaret` WinForms 不可用）：`Notice` MirTextBox 保留作数据源（`Visible=false`，NetProbe 直写 `Notice.Text`），`TextChanged → SyncFromTextBox` 读回全文；渲染委托 25 行 `NoticeLineLabels` 窗口（每行 13px 于 322×330 框内，TextGlyphBuilder 不折行逐行标签）；`NoticeUpButton/DownButton` 驱动 `NoticeScrollIndex`（下滚末端守卫 `>=max(0,count-25)`）+ `NoticePositionBar` 滚动条位置（289px 轨道，y∈[16,298]）+ `OnMoving` 拖动反算（旧客户端 `NoticePositionBar_OnMoving` 纯 C# 版）。`GameSession` 补 5 派发（`internal static` + `InternalsVisibleTo` 供探针）：`S.GuildStatus`（同步 `User.GuildName/GuildRankName` + 首次入会标记 `NoticeChanged/MembersChanged` + 填 `Level/Experience/MemberCount/MaxMembers`，空行会名 Hide）/`S.GuildNoticeChange`（`update==-1` → `NoticeChanged=true` 下次 Show 拉整表；否则整表 `NoticeChange` 存全文+归零滚动索引+渲染首屏）/`S.GuildInvite`（弹 `MirMessageBox` YesNo：Yes→`C.GuildInvite{AcceptInvite=true}`，No→`{false}`）/`S.GuildMemberChange`（0 下线/1 上线/2 加入→`MemberCount++`+行会频道 `PlayerJoinedGuild`/3 除名/4 离开→`PlayerLeftGuild`）/`S.GuildExpGain`（累加状态页经验）。`InitInGameDialogs` 常驻创建 `GuildDialog`（默认隐藏，好友之后）。`MobileBootstrap` 行会入口（`_guild` 按钮栈，黄 tint，好友下方 `SetMargin` 下移 6 格）+ `ToggleGuild`（开→互斥隐藏背包/角色/组队/好友面板 + 取消摇杆/HUD/拾取/自动寻路再开面板；关→Hide）+ UiConsumer 链 `_guild.OnTouch` + `BackHandler` 关行会面板 + `uiOpen`/`bagOpen` 守卫追加 `GuildDialog.Visible` + RenderHud 每帧 `guild.Draw()`+`UiText.WarmTree`（含瞬态模态框）。`GuildVerify` 17/17（常驻创建默认隐藏/Show 未加入弹 OK 提示+不打开/Show 已加入 Visible+发 RequestGuildInfo{Type=0}/5s 节流不发第二次/S.GuildStatus 同步 User+填状态页/首次入会标记 Notice+Members/空行会名 Hide/整表 30 行存储+滚动索引归零+首屏 25 行窗口/Up-Down 窗口平移+滚动条位置+末端守卫/update=-1 标记 Show 重拉/GuildInvite Yes→接受发包/No→拒绝/加入→MemberCount+++行会频道提示/离开提示计数不变/GuildExpGain 累加/CloseButton Hide/RouteTouch 行会按钮消费不喂摇杆+开面板发拉取）。
 
 #### 8-7-1 交易窗口触控化
 状态：🔲｜预估：1d｜依赖：8-6-1
