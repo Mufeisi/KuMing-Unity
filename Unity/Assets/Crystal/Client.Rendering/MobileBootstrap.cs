@@ -31,6 +31,9 @@ namespace Crystal.Client.Rendering
         bool _booted;
         bool _renderReady;
         bool _hudTexReady;
+        // G8 缺口 2/4：断线重连连接凭据（Start 注入字段，供重连回调复用）
+        string _netHost; int _netPort; string _netId, _netPw;
+        bool _netLostArmed; // 本帧已 arm（Network.Connected 轮询防每帧重复）
         float _lastFpsLogAt; // 帧率诊断日志节流（模拟器 swiftshader 帧率低，确认 Unity 主循环活动）
         float _lastTouchDiagAt; // 触摸诊断日志节流（坐标系实证：backbuffer vs 物理）
         long _lastMoveAt;
@@ -286,6 +289,23 @@ namespace Crystal.Client.Rendering
             int port = GetInt("CRYSTAL_NET_PORT", NetPort);
             string id = Env("CRYSTAL_LOGIN_ID", LoginId);
             string pw = Env("CRYSTAL_LOGIN_PW", LoginPw);
+            _netHost = host; _netPort = port; _netId = id; _netPw = pw;
+
+            // G8 缺口 2/4：断线自动重连（服务器 Disconnect 包 → OnDisconnected；客户端断网 → Update 轮询 Network.Connected）
+            MobileReconnect.ConnectAndLogin = () =>
+            {
+                Debug.Log($"[mobile] recon attempt={MobileReconnect.Attempts}");
+                try
+                {
+                    GameSession.Connect(_netHost, _netPort);
+                    GameSession.Login(_netId, _netPw);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[mobile] recon fail {ex.GetType().Name}: {ex.Message}");
+                }
+            };
+            GameSession.OnDisconnected += () => { Debug.Log("[mobile] disconnect → arm reconnect"); MobileReconnect.Arm(); };
 
             GameSession.OnEnterGame += () => Debug.Log($"[mobile] enter-game objects={MapControl.Objects.Count}");
             GameSession.OnError += m => Debug.LogError($"[mobile] error {m}");
@@ -310,8 +330,7 @@ namespace Crystal.Client.Rendering
                 Debug.Log($"[mobile] connect {host}:{port}");
                 GameSession.Login(id, pw);
                 Debug.Log($"[mobile] login {id}");
-                _booted = true;
-            }
+                _booted = true;            }
             catch (Exception ex)
             {
                 // IL2CPP 下 Debug.Log(ex.ToString()) 对 TypeInitializationException 会再次抛异常（"Couldn't extract
@@ -378,6 +397,20 @@ namespace Crystal.Client.Rendering
 
         void Update()
         {
+            // G8 缺口 2/4：客户端断网检测（连接丢失无 Disconnect 包 → Network.Connected 轮询）+ 重连驱动
+            var st = GameSession.State;
+            if (_booted && !_netLostArmed && !Network.Connected
+                && st != GameSessionState.Connecting && st != GameSessionState.LoginWait)
+            {
+                _netLostArmed = true;
+                Debug.Log("[mobile] net-lost → arm reconnect");
+                MobileReconnect.Arm();
+            }
+            else if (Network.Connected && _netLostArmed)
+            {
+                _netLostArmed = false; // 网络恢复/重连成功，解除轮询锁
+            }
+            MobileReconnect.Tick();
             if (!_booted) return;
             // 分辨率扇出（P2 统一：渲染真值→UI 消费方，早退零成本）+ 返回键轮询（Android Back → 关顶层对话框）。
             ScreenMetrics.Set(GameRuntime.ScreenW, GameRuntime.ScreenH);
