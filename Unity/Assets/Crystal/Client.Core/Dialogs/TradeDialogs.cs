@@ -14,8 +14,9 @@ namespace Client.MirScenes.Dialogs
     // 逐字移植（2026-08-06）：Client/MirScenes/Dialogs/TradeDialogs.cs 交易对话框控制树。
     // TradeDialog 本方交易面板（Prguse 389，5×2 MirItemCell + 名称/金币标签 + Title 520 确认
     // + Prguse2 360 关闭）/ GuestTradeDialog 对方交易面板（Prguse 390，5×2 GuestGrid）。
-    // 裁剪：GoldLabel.Click 原弹 MirAmountBox 输入金币金额（未移植弹窗基类）→ 点击留空；
-    // 网络发包（C.TradeConfirm/C.TradeCancel）保留（Network 已可用）。
+    // 阶段8 第7项 接回：GoldLabel 点弹 MirAmountBox 输入金币（8-5-1 软键盘桥可用，旧客户端逐字）；
+    // 网络发包（C.TradeConfirm/C.TradeCancel/C.TradeGold）保留（Network 已可用），放入/取回
+    // 走 MirItemCell.OnMouseClick 两段式触控（选中源格→点空目标格发 C.DepositTradeItem/RetrieveTradeItem）。
     public sealed class TradeDialog : MirImageControl
     {
         public MirItemCell[] Grid;
@@ -87,8 +88,31 @@ namespace Client.MirScenes.Dialogs
                 Size = new Size(90, 15),
                 Sound = SoundList.Gold,
             };
-            // GoldLabel.Click 原弹 MirAmountBox 输入金币金额（未移植弹窗基类）→ 点击留空。
-            GoldLabel.Click += (o, e) => { };
+            // 金币输入（8-7-1）：点金币标签弹 MirAmountBox 输入金额（旧客户端 TradeDialogs 逐字移植，
+            // 8-5-1 软键盘桥已可用）。背包选中格时不可输入（对齐旧客户端 SelectedCell==null 守卫）；
+            // OK 且 Amount>0 → TradeGoldAmount 累加 + C.TradeGold{Amount}（服务器权威校验上限）。
+            GoldLabel.Click += (o, e) =>
+            {
+                if (GameScene.SelectedCell == null && GameScene.Gold > 0)
+                {
+                    var amountBox = new MirAmountBox(
+                        GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.TradeAmount),
+                        116, GameScene.Gold);
+
+                    amountBox.OKButton.Click += (c, a) =>
+                    {
+                        if (amountBox.Amount > 0)
+                        {
+                            GameScene.User.TradeGoldAmount += amountBox.Amount;
+                            Network.Enqueue(new C.TradeGold { Amount = amountBox.Amount });
+                            RefreshInterface();
+                        }
+                    };
+
+                    amountBox.Show();
+                    GameScene.PickedUpGold = false;
+                }
+            };
             #endregion
 
             #region Grids

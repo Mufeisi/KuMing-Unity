@@ -311,6 +311,30 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.GuildExpGain:
                     GuildExpGain((S.GuildExpGain)p);
                     break;
+                case (short)ServerPacketIds.TradeRequest:
+                    TradeRequest((S.TradeRequest)p);
+                    break;
+                case (short)ServerPacketIds.TradeAccept:
+                    TradeAccept((S.TradeAccept)p);
+                    break;
+                case (short)ServerPacketIds.TradeGold:
+                    TradeGold((S.TradeGold)p);
+                    break;
+                case (short)ServerPacketIds.TradeItem:
+                    TradeItem((S.TradeItem)p);
+                    break;
+                case (short)ServerPacketIds.TradeConfirm:
+                    TradeConfirm();
+                    break;
+                case (short)ServerPacketIds.TradeCancel:
+                    TradeCancel((S.TradeCancel)p);
+                    break;
+                case (short)ServerPacketIds.DepositTradeItem:
+                    DepositTradeItem((S.DepositTradeItem)p);
+                    break;
+                case (short)ServerPacketIds.RetrieveTradeItem:
+                    RetrieveTradeItem((S.RetrieveTradeItem)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -784,6 +808,118 @@ namespace Crystal.Client.Rendering
             if (dlg != null) dlg.Experience += p.Amount;
         }
 
+        // ===== 交易（8-7-1）=====
+        // 旧客户端 GameScene 交易包处理逐字移植（TradeRequest/TradeAccept/TradeGold/TradeItem/
+        // TradeConfirm/TradeCancel/DepositTradeItem/RetrieveTradeItem）。分发驱动 TradeDialog +
+        // GuestTradeDialog（InitInGameDialogs 常驻创建）；对方改动（TradeGold/TradeItem）→
+        // ChangeLockState(false) 解锁双方（旧客户端同款）。internal：TradeVerify 探针直调测全链。
+        // S.TradeRequest：被邀弹 MirMessageBox YesNo（旧客户端逐字）→ 接受 C.TradeReply{true}，
+        // 拒绝 C.TradeReply{false}（服务器收受后 S.TradeAccept 开面板或终止）。
+        internal static void TradeRequest(S.TradeRequest p)
+        {
+            var box = new MirMessageBox(
+                GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerRequestedTrade, p.Name),
+                MirMessageBoxButtons.YesNo);
+            box.YesButton.Click += (o, e) => Network.Enqueue(new C.TradeReply { AcceptInvite = true });
+            box.NoButton.Click += (o, e) => Network.Enqueue(new C.TradeReply { AcceptInvite = false });
+            box.Show();
+        }
+
+        // S.TradeAccept：对方接受 → 记对方名 + 开双方交易面板（TradeDialog.TradeAccept 移背包到
+        // 右上并 Show 双方）。
+        internal static void TradeAccept(S.TradeAccept p)
+        {
+            var dlg = GameScene.Scene?.TradeDialog;
+            var guest = GameScene.Scene?.GuestTradeDialog;
+            if (dlg == null || guest == null) return;
+            guest.GuestName = p.Name;
+            dlg.TradeAccept();
+        }
+
+        // S.TradeGold：对方金币回声 → 记 GuestGold + 解锁（对方改金币即解锁双方）+ 刷新。
+        internal static void TradeGold(S.TradeGold p)
+        {
+            var dlg = GameScene.Scene?.TradeDialog;
+            var guest = GameScene.Scene?.GuestTradeDialog;
+            if (dlg == null || guest == null) return;
+            guest.GuestGold = p.Amount;
+            dlg.ChangeLockState(false);
+            dlg.RefreshInterface();
+        }
+
+        // S.TradeItem：对方物品整表回声 → 记 GuestItems + 解锁 + 刷新。
+        internal static void TradeItem(S.TradeItem p)
+        {
+            var dlg = GameScene.Scene?.TradeDialog;
+            if (dlg == null) return;
+            GuestTradeDialog.GuestItems = p.TradeItems;
+            dlg.ChangeLockState(false);
+            dlg.RefreshInterface();
+        }
+
+        // S.TradeConfirm：交易完成（服务端下发）→ 重置双方面板（清物品/金币/解锁 + 隐藏）。
+        internal static void TradeConfirm()
+        {
+            var dlg = GameScene.Scene?.TradeDialog;
+            if (dlg != null) dlg.TradeReset();
+        }
+
+        // S.TradeCancel：Unlock=true 仅解锁（对方改动了交易，旧客户端 ChangeLockState(false)）；
+        // 否则交易取消 → 重置双方面板 + 系统提示（旧客户端逐字）。
+        internal static void TradeCancel(S.TradeCancel p)
+        {
+            var dlg = GameScene.Scene?.TradeDialog;
+            if (dlg == null) return;
+            if (p.Unlock)
+            {
+                dlg.ChangeLockState(false);
+                return;
+            }
+            dlg.TradeReset();
+            var box = new MirMessageBox("交易取消\r\n要完成交易必须面对对方", MirMessageBoxButtons.OK);
+            box.Show();
+        }
+
+        // S.DepositTradeItem：放入回声（我方背包→交易窗）。解锁双方格子 + 解锁交易，成功移物品。
+        // Unity 无 BeltDialog（腰带未移植）：背包格 ItemSlot=6+idx（跳过腰带 0-5）→
+        // InventoryDialog.Grid[slot-6]；From<BeltIdx（腰带格）无对应 UI，跳过。
+        internal static void DepositTradeItem(S.DepositTradeItem p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || p.From < MapObject.User.BeltIdx) return;
+            var inv = scene.InventoryDialog;
+            var trade = scene.TradeDialog;
+            if (inv == null || trade == null || p.To < 0 || p.To >= trade.Grid.Length) return;
+            var fromCell = inv.Grid[p.From - MapObject.User.BeltIdx];
+            var toCell = trade.Grid[p.To];
+            if (fromCell == null || toCell == null) return;
+            toCell.Locked = false;
+            fromCell.Locked = false;
+            trade.ChangeLockState(false);
+            if (!p.Success) return;
+            toCell.Item = fromCell.Item;
+            fromCell.Item = null;
+        }
+
+        // S.RetrieveTradeItem：取回回声（交易窗→我方背包）。From 交易格（0..9），To 背包格。
+        internal static void RetrieveTradeItem(S.RetrieveTradeItem p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || p.To < MapObject.User.BeltIdx) return;
+            var inv = scene.InventoryDialog;
+            var trade = scene.TradeDialog;
+            if (inv == null || trade == null || p.From < 0 || p.From >= trade.Grid.Length) return;
+            var fromCell = trade.Grid[p.From];
+            var toCell = inv.Grid[p.To - MapObject.User.BeltIdx];
+            if (fromCell == null || toCell == null) return;
+            toCell.Locked = false;
+            fromCell.Locked = false;
+            trade.ChangeLockState(false);
+            if (!p.Success) return;
+            toCell.Item = fromCell.Item;
+            fromCell.Item = null;
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1041,6 +1177,14 @@ namespace Crystal.Client.Rendering
                 // GuildMemberChange/GuildInvite/GuildExpGain 分发刷新状态页/公告页。
                 var guild = new GuildDialog { Parent = scene, Visible = false };
                 scene.GuildDialog = guild;
+                // 交易面板（8-7-1）：常驻创建默认隐藏（同 NPCDialog 模式）。S.TradeAccept 开双方面板
+                // （TradeAccept 移背包到右上 + Show）；GoldLabel 点弹 MirAmountBox 输入金币；
+                // ConfirmButton 锁定/确认发包；CloseButton 关双方 + C.TradeCancel。顺序契约：
+                // TradeDialog 先建（RefreshInterface 引用 GuestTradeDialog，探针直调时已就位）。
+                var trade = new TradeDialog { Parent = scene, Visible = false };
+                scene.TradeDialog = trade;
+                var guest = new GuestTradeDialog { Parent = scene, Visible = false };
+                scene.GuestTradeDialog = guest;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

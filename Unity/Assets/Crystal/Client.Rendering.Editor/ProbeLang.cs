@@ -181,6 +181,10 @@ namespace Crystal.Rendering.Editor
             { ClientTextKeys.SetPetModeFocusMasterTarget, "设置宠物模式：专注主人目标" },
             { ClientTextKeys.ToggleCameraMode, "切换视角模式" },
             { ClientTextKeys.ToggleDropview, "切换掉落显示" },
+
+            // 交易（8-7-1）：TradeRequest 弹窗标题 / MirAmountBox 金币输入标题（探针渲染断言文本）。
+            { ClientTextKeys.PlayerRequestedTrade, "玩家 {0} 要求与你交易" },
+            { ClientTextKeys.TradeAmount, "交易金额:" },
         };
     }
 }

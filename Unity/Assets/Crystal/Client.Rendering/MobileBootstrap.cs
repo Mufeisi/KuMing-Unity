@@ -50,6 +50,7 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _group = new MobileBag(1280, 720);  // 组队按钮（8-6-1）：地图下方开/关组队面板（红 tint）
         readonly MobileBag _friend = new MobileBag(1280, 720); // 好友按钮（8-6-2）：组队下方开/关好友/黑名单面板（青 tint）
         readonly MobileBag _guild = new MobileBag(1280, 720);  // 行会按钮（8-6-3）：好友下方开/关行会面板（黄 tint）
+        readonly MobileTrade _trade = new MobileTrade();       // 交易请求（8-7-1）：地图 tap 命中玩家→C.TradeRequest
         readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex, _friendTex, _guildTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
@@ -174,6 +175,14 @@ namespace Crystal.Client.Rendering
                 // NPC 对话框（增量6）：顶层先关（NPC 对话可与背包并存，Back 优先关对话）。
                 var npc = scene != null ? scene.NPCDialog : null;
                 if (npc != null && npc.Visible) { npc.Hide(); return true; }
+                // 交易面板（8-7-1）：移动端 tap 玩家发 C.TradeRequest 打开；Back 复用关闭按钮完整语义
+                // （Hide 双方 + C.TradeCancel 取消交易），同 NPC 商店 Back 优先关（顶层先关）。
+                var trade = scene != null ? scene.TradeDialog : null;
+                if (trade != null && trade.Visible)
+                {
+                    trade.CloseButton.InvokeMouseClick(EventArgs.Empty);
+                    return true;
+                }
                 var inv = scene != null ? scene.InventoryDialog : null;
                 if (inv != null && inv.Visible) { inv.Hide(); return true; }
                 return false;
@@ -236,7 +245,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true) || (uiSc.TradeDialog?.Visible == true));
             // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
             // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
             // 避免寻路激活中重开地图被本帧立刻关闭。
@@ -313,6 +322,8 @@ namespace Crystal.Client.Rendering
             var group = scene != null ? scene.GroupDialog : null;
             var friend = scene != null ? scene.FriendDialog : null;
             var guild = scene != null ? scene.GuildDialog : null;
+            var trade = scene != null ? scene.TradeDialog : null;
+            var guest = scene != null ? scene.GuestTradeDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -351,6 +362,9 @@ namespace Crystal.Client.Rendering
             if (friend != null && friend.Visible) UiText.WarmTree(friend);
             // 行会面板（8-6-3）：开才预热字形（公告 25 行标签/状态页标签），批前须合帧（同组队面板模式）。
             if (guild != null && guild.Visible) UiText.WarmTree(guild);
+            // 交易面板（8-7-1）：开才预热字形（双方名称/金币标签），批前须合帧（同组队面板模式）。
+            if (trade != null && trade.Visible) UiText.WarmTree(trade);
+            if (guest != null && guest.Visible) UiText.WarmTree(guest);
             // 备注浮窗（8-6-2）：MemoDialog 为好友面板独立子窗（Title 209），开才预热字形（多行文本框）。
             var memo = scene != null ? scene.MemoDialog : null;
             if (memo != null && memo.Visible) UiText.WarmTree(memo);
@@ -379,6 +393,8 @@ namespace Crystal.Client.Rendering
             if (group != null && group.Visible) group.Draw(); // 组队面板（8-6-1）：与任务/地图同层（背包面板之上）
             if (friend != null && friend.Visible) friend.Draw(); // 好友面板（8-6-2）：与组队同层（背包面板之上）
             if (guild != null && guild.Visible) guild.Draw(); // 行会面板（8-6-3）：与组队/好友同层（背包面板之上）
+            if (trade != null && trade.Visible) trade.Draw(); // 交易面板（8-7-1）：与组队/好友同层（背包面板之上）
+            if (guest != null && guest.Visible) guest.Draw(); // 对方交易面板（8-7-1）：随本方面板开
             if (memo != null && memo.Visible) memo.Draw(); // 备注浮窗（8-6-2）：好友子窗最顶层
             if (modalControls != null)
                 for (int i = 0; i < modalControls.Count; i++)
@@ -478,7 +494,8 @@ namespace Crystal.Client.Rendering
             var group = scene != null ? scene.GroupDialog : null;
             var friend = scene != null ? scene.FriendDialog : null;
             var guild = scene != null ? scene.GuildDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var tradeDlg = scene != null ? scene.TradeDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible) || (tradeDlg != null && tradeDlg.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -504,7 +521,8 @@ namespace Crystal.Client.Rendering
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
                     // Up 且无拖拽位移（ReleasedWithIntent false）且非 HUD 按钮区 → 地图 tap →
-                    // NPC 优先（命中即消费），未命中落回拾取。TapAt 返回 false（无物品/距离外）即目标保持清空，不发包。
+                    // NPC 优先（命中即消费）→ 玩家交易（命中即消费）→ 未命中落回拾取。
+                    // TapAt 返回 false（无物品/距离外）即目标保持清空，不发包。
                     Joystick = (id, ph, rawPos) =>
                     {
                         _joystick.OnTouch(id, ph, rawPos);
@@ -513,7 +531,7 @@ namespace Crystal.Client.Rendering
                         if (ph == JoystickPhase.Up && !_joystick.ReleasedWithIntent && !_hud.Hit(MobileUiAdapter.ToUi(rawPos)))
                         {
                             var mc = scene != null ? scene.MapControl : null;
-                            if (!_npc.TapAt(mc, ui)) _pickup.TapAt(mc, ui);
+                            if (!_npc.TapAt(mc, ui)) if (!_trade.TapAt(mc, ui)) _pickup.TapAt(mc, ui);
                         }
                     },
                     Hud = (id, ph, ui) => _hud.OnTouch(id, ph, ui),                      // HUD（ui 空间）

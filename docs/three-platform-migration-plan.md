@@ -111,7 +111,7 @@
 | 8-6-1 | 组队流程触控化 | 8·第6项 | ✅ | 8-3-1 | 1d |
 | 8-6-2 | 好友流程触控化 | 8·第6项 | ✅ | 8-6-1 | 1d |
 | 8-6-3 | 行会面板触控化 | 8·第6项 | ✅ | 8-6-1 | 1d |
-| 8-7-1 | 交易窗口触控化 | 8·第7项 | 🔲 | 8-6-1 | 1d |
+| 8-7-1 | 交易窗口触控化 | 8·第7项 | ✅ | 8-6-1 | 1d |
 | 8-7-2 | 邮件系统触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
 | 8-7-3 | 拍卖行触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
 | 8-7-4 | 商城触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
@@ -390,13 +390,16 @@
 - 实现：`GuildDialog` 网络交互接回（PC 迭代包6 探针留空处补全）：Show 未加入行会（`string.IsNullOrEmpty(GuildName)`）弹 `MirMessageBox` OK（`NotInGuild`）不打开；已加入 → Visible + `NoticeChanged && LastNoticeRequest<Time` 时发 `C.RequestGuildInfo{Type=0}`（5s 节流，`LastNoticeRequest=Time+5000`）。公告滚动纯 C# 化（`InputTextBox.GetFirstCharIndexFromLine/ScrollToCaret` WinForms 不可用）：`Notice` MirTextBox 保留作数据源（`Visible=false`，NetProbe 直写 `Notice.Text`），`TextChanged → SyncFromTextBox` 读回全文；渲染委托 25 行 `NoticeLineLabels` 窗口（每行 13px 于 322×330 框内，TextGlyphBuilder 不折行逐行标签）；`NoticeUpButton/DownButton` 驱动 `NoticeScrollIndex`（下滚末端守卫 `>=max(0,count-25)`）+ `NoticePositionBar` 滚动条位置（289px 轨道，y∈[16,298]）+ `OnMoving` 拖动反算（旧客户端 `NoticePositionBar_OnMoving` 纯 C# 版）。`GameSession` 补 5 派发（`internal static` + `InternalsVisibleTo` 供探针）：`S.GuildStatus`（同步 `User.GuildName/GuildRankName` + 首次入会标记 `NoticeChanged/MembersChanged` + 填 `Level/Experience/MemberCount/MaxMembers`，空行会名 Hide）/`S.GuildNoticeChange`（`update==-1` → `NoticeChanged=true` 下次 Show 拉整表；否则整表 `NoticeChange` 存全文+归零滚动索引+渲染首屏）/`S.GuildInvite`（弹 `MirMessageBox` YesNo：Yes→`C.GuildInvite{AcceptInvite=true}`，No→`{false}`）/`S.GuildMemberChange`（0 下线/1 上线/2 加入→`MemberCount++`+行会频道 `PlayerJoinedGuild`/3 除名/4 离开→`PlayerLeftGuild`）/`S.GuildExpGain`（累加状态页经验）。`InitInGameDialogs` 常驻创建 `GuildDialog`（默认隐藏，好友之后）。`MobileBootstrap` 行会入口（`_guild` 按钮栈，黄 tint，好友下方 `SetMargin` 下移 6 格）+ `ToggleGuild`（开→互斥隐藏背包/角色/组队/好友面板 + 取消摇杆/HUD/拾取/自动寻路再开面板；关→Hide）+ UiConsumer 链 `_guild.OnTouch` + `BackHandler` 关行会面板 + `uiOpen`/`bagOpen` 守卫追加 `GuildDialog.Visible` + RenderHud 每帧 `guild.Draw()`+`UiText.WarmTree`（含瞬态模态框）。`GuildVerify` 17/17（常驻创建默认隐藏/Show 未加入弹 OK 提示+不打开/Show 已加入 Visible+发 RequestGuildInfo{Type=0}/5s 节流不发第二次/S.GuildStatus 同步 User+填状态页/首次入会标记 Notice+Members/空行会名 Hide/整表 30 行存储+滚动索引归零+首屏 25 行窗口/Up-Down 窗口平移+滚动条位置+末端守卫/update=-1 标记 Show 重拉/GuildInvite Yes→接受发包/No→拒绝/加入→MemberCount+++行会频道提示/离开提示计数不变/GuildExpGain 累加/CloseButton Hide/RouteTouch 行会按钮消费不喂摇杆+开面板发拉取）。
 
 #### 8-7-1 交易窗口触控化
-状态：🔲｜预估：1d｜依赖：8-6-1
+状态：✅ 已收口（2026-08-08）｜预估：1d｜依赖：8-6-1
 
 - 目标：交易 2×5 格、金币、锁定/确认 触控流程。
 - 开发：复用 PC 迭代包7；交易确认时序；数量输入走 8-5-1 软键盘。
 - 测试：探针（交易锁定/确认发包）。
 - 验证：探针 PASS + PC 回归 `net-market.ps1` + 冒烟。
 - 提交：`feat(阶段8): 交易窗口触控化`。
+- 验收：真机两人交易完成。
+
+完成记录（2026-08-08）：`TradeDialog`/`GuestTradeDialog` 网络交互接回 + `InitInGameDialogs` 常驻；`GameSession` 补 8 派发（TradeRequest 弹 YesNo/TradeAccept 双方 Show+背包移右上/TradeGold 解锁+记数/TradeItem GuestItems 整表/Confirm Reset/Cancel 解锁或重置+提示/Deposit/Retrieve 回声移物品）；放入/取回 `MirItemCell` 两段式触控（双格锁防连点）；金币 `GoldLabel`→`MirAmountBox`（8-5-1 软键盘）→`C.TradeGold`；锁定/确认 `C.TradeConfirm`；关闭 Hide 双方+`C.TradeCancel`；`MobileTrade` 地图 tap 玩家→`C.TradeRequest`（3000ms 节流）；`MobileBootstrap` 接线。验证：`[tradeverify] PASS cases=22` + `net-market.ps1` RenderMarket 回归 PASS（exit 0）。
 - 验收：真机两人交易完成。
 
 #### 8-7-2 邮件系统触控化

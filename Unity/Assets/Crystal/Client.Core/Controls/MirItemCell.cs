@@ -12,11 +12,11 @@ namespace Client.MirControls
     // 逐字移植（2026-08-05）：Client/MirControls/MirItemCell.cs 渲染核心
     // 背包/装备/Tooltip 场景（迭代包2）。数据绑定（Item/ItemArray/GridType/ItemSlot）+ DrawControl
     // （格子背景/物品图标/SealedInfo 特效/数量角标）+ 悬停 Tooltip 触发，逐字保留。
-    // 交互（增量2 点格选中；增量3 双击穿脱；增量4 双击用药）：OnMouseClick 选中 /
-    // OnMouseDoubleClick→UseItem（背包格可穿戴→C.EquipItem，药品/卷轴/书/食物→C.UseItem，装备格→卸下）
-    // /CanWearItem 资格校验。拖拽（MoveItem 2639 行主体）、
+    // 交互（增量2 点格选中；增量3 双击穿脱；增量4 双击用药；增量7 交易两段式放入/取回）：
+    // OnMouseClick 选中 / OnMouseDoubleClick→UseItem（背包格可穿戴→C.EquipItem，药品/卷轴/书/
+    // 食物→C.UseItem，装备格→卸下）/CanWearItem 资格校验。拖拽（MoveItem 2639 行主体）、
     // 未移植对话框分支（DropPanel/TrustMerchant/Renting/Craft/
-    // Storage/Trade/Mount 等）在 Item/ItemArray 中按 Scope Gate 剔除或抛 NotImplementedException。
+    // Storage/Mount 等）在 Item/ItemArray 中按 Scope Gate 剔除或抛 NotImplementedException。
     public sealed class MirItemCell : MirImageControl
     {
         public UserItem Item
@@ -250,14 +250,45 @@ namespace Client.MirControls
 
         // 阶段8 第2项 增量2：点格选中（触控/鼠标统一入口）。有物品→SelectedCell=this（边框高亮+图标置灰，
         // Border/DrawControl 既有渲染消费）；空格→清除本网格选中（跨网格守卫，装备/仓库等不误清）。
-        // 拖拽移动/删除（旧客户端 OnMouseClick 2639 行主体）属后续增量。
+        // 阶段8 第7项：选中源格 + 点异网格空目标格 → 交易放入/取回（无拖拽的两段式触控）。
         public override void OnMouseClick(MouseEventArgs e)
         {
             if (Item != null)
                 GameScene.SelectedCell = this;
             else if (GameScene.SelectedCell != null && GameScene.SelectedCell.GridType == GridType)
                 GameScene.SelectedCell = null;
+            else
+                TradeTransfer();
             base.OnMouseClick(e);
+        }
+
+        // 交易放入/取回（8-7-1）：选中源格（背包物品 / 交易窗物品）后点空目标格发
+        // C.DepositTradeItem/C.RetrieveTradeItem（服务器权威校验，S.* 回声解锁+移物品，旧客户端
+        // MirItemCell OnMouseClick 逐字裁剪——MergeItem 合并/腰带格分支未移植）。锁定双格防连点；
+        // 目标格非空不发（对齐旧客户端只放空格的语义）。异网格源格选择本身不变（点物品即选中）。
+        void TradeTransfer()
+        {
+            var src = GameScene.SelectedCell;
+            if (src == null || src == this || src.Item == null) return;
+
+            // 背包 → 交易窗放入（目标交易格为空）。
+            if (src.GridType == MirGridType.Inventory && GridType == MirGridType.Trade && Item == null)
+            {
+                Network.Enqueue(new C.DepositTradeItem { From = src.ItemSlot, To = ItemSlot });
+                src.Locked = true;
+                Locked = true;
+                GameScene.SelectedCell = null;
+                return;
+            }
+            // 交易窗 → 背包取回（目标背包格为空）。
+            if (src.GridType == MirGridType.Trade && GridType == MirGridType.Inventory && Item == null)
+            {
+                Network.Enqueue(new C.RetrieveTradeItem { From = src.ItemSlot, To = ItemSlot });
+                src.Locked = true;
+                Locked = true;
+                GameScene.SelectedCell = null;
+                return;
+            }
         }
 
         // 阶段8 第2项 增量3：双击使用/卸下（旧客户端 OnMouseDoubleClick 298-310 行同源）。
