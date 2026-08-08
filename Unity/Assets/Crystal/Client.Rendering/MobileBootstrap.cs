@@ -35,14 +35,17 @@ namespace Crystal.Client.Rendering
         long _lastStepAt;   // 最近一次发出移动包时刻（服务器 _stepCounter>0 才允许 Run，模拟助跑）
         long _lastPosLogAt;
         string _lastLoggedPos;
+        bool _prevAutoPath; // 上一帧 MapControl.AutoPath（上升沿检测：视口点击设寻路 → 关地图窗）
         readonly TouchJoystick _joystick = new TouchJoystick();
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
         readonly MobilePickup _pickup = new MobilePickup(); // 地面拾取（增量5）：地图 tap 设目标→走位→C.PickUp
+        readonly MobileAutoPath _autoPath = new MobileAutoPath(); // 自动寻路（8-4-2）：大地图视口点击→逐格 C.Walk
         readonly MobileNpc _npc = new MobileNpc();           // NPC 对话（增量6）：地图 tap 命中 NPC→C.CallNPC 拉对话
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
         readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
         readonly MobileBag _quest = new MobileBag(1280, 720);  // 任务按钮（8-4-1）：装备下方开/关任务日记（蓝 tint）
+        readonly MobileBag _map = new MobileBag(1280, 720);    // 大地图按钮（8-4-2）：任务下方开/关大地图（紫 tint）
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex;      // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
@@ -90,11 +93,19 @@ namespace Crystal.Client.Rendering
             _quest.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 2));
             _quest.TintOpen = new Color(0.5f, 0.7f, 1f, 0.95f);
             _quest.TintClosed = new Color(0.3f, 0.45f, 0.8f, 0.95f);
+            // 大地图按钮（8-4-2）：任务按钮正下方，紫 tint 与背包黄/装备绿/任务蓝区分；开/关大地图窗。
+            _map.OnToggle = ToggleBigMap;
+            _map.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 3));
+            _map.TintOpen = new Color(0.85f, 0.6f, 1f, 0.95f);
+            _map.TintClosed = new Color(0.6f, 0.35f, 0.85f, 0.95f);
             // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
             // Hide()（增量2）顺带清选中+Tooltip；装备窗口（增量3）优先关（顶层先关）。
             MobileUiAdapter.BackHandler = () =>
             {
                 var scene = GameScene.Scene;
+                // 大地图（8-4-2）：移动端地图按钮打开，Back 关闭（顶层先关）+ 打断在途寻路。
+                var bigMap = scene != null ? scene.BigMapDialog : null;
+                if (bigMap != null && bigMap.Visible) { bigMap.Hide(); _autoPath.Cancel(); return true; }
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
                 // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
@@ -177,10 +188,22 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true));
+            // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
+            // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
+            // 避免寻路激活中重开地图被本帧立刻关闭。
+            var mapDlg = uiSc != null ? uiSc.BigMapDialog : null;
+            bool autoPathNow = uiSc != null && uiSc.MapControl != null && uiSc.MapControl.AutoPath;
+            if (autoPathNow && !_prevAutoPath && mapDlg != null && mapDlg.Visible)
+            {
+                mapDlg.Hide();
+                Debug.Log("[mobile] autopath-set close-bigmap");
+            }
+            _prevAutoPath = autoPathNow;
             if (!_joystick.Active && !uiOpen)
             {
                 if (_pickup.Active) _pickup.Tick();
+                else if (_autoPath.Active) _autoPath.Tick();
                 else _combat.Tick();
             }
             LogPosition();
@@ -217,6 +240,8 @@ namespace Crystal.Client.Rendering
                 _equip.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_quest.ScreenW != GameRuntime.ScreenW || _quest.ScreenH != GameRuntime.ScreenH)
                 _quest.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_map.ScreenW != GameRuntime.ScreenW || _map.ScreenH != GameRuntime.ScreenH)
+                _map.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -226,6 +251,7 @@ namespace Crystal.Client.Rendering
             var qlist = scene != null ? scene.QuestListDialog : null;
             var qdet = scene != null ? scene.QuestDetailDialog : null;
             var qtrk = scene != null ? scene.QuestTrackingDialog : null;
+            var bigMap = scene != null ? scene.BigMapDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -247,6 +273,8 @@ namespace Crystal.Client.Rendering
             if (qlist != null && qlist.Visible) UiText.WarmTree(qlist);
             if (qdet != null && qdet.Visible) UiText.WarmTree(qdet);
             if (qtrk != null && qtrk.Visible) UiText.WarmTree(qtrk);
+            // 大地图（8-4-2）：开才预热字形（TitleLabel/坐标标签/行名），批前须合帧。
+            if (bigMap != null && bigMap.Visible) UiText.WarmTree(bigMap);
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
@@ -257,9 +285,11 @@ namespace Crystal.Client.Rendering
             if (qlist != null && qlist.Visible) qlist.Draw();
             if (qdet != null && qdet.Visible) qdet.Draw();
             if (qtrk != null && qtrk.Visible) qtrk.Draw();
+            if (bigMap != null && bigMap.Visible) bigMap.Draw();
             _bag.Render(_bagTex);
             _equip.Render(_bagTex);
             _quest.Render(_bagTex);
+            _map.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -336,7 +366,8 @@ namespace Crystal.Client.Rendering
             var qdia = scene != null ? scene.QuestDiaryDialog : null;
             var qlist = scene != null ? scene.QuestListDialog : null;
             var qdet = scene != null ? scene.QuestDetailDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var bigMap = scene != null ? scene.BigMapDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -357,7 +388,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui), // 背包/装备/任务按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui), // 背包/装备/任务/地图按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -367,7 +398,7 @@ namespace Crystal.Client.Rendering
                     {
                         _joystick.OnTouch(id, ph, rawPos);
                         var ui = MobileUiAdapter.ToUiPoint(rawPos);
-                        if (ph == JoystickPhase.Down) { _pickup.Cancel(); return; }
+                        if (ph == JoystickPhase.Down) { _pickup.Cancel(); _autoPath.Cancel(); return; }
                         if (ph == JoystickPhase.Up && !_joystick.ReleasedWithIntent && !_hud.Hit(MobileUiAdapter.ToUi(rawPos)))
                         {
                             var mc = scene != null ? scene.MapControl : null;
@@ -383,6 +414,7 @@ namespace Crystal.Client.Rendering
             if (moving)
             {
                 _pickup.Cancel(); // 移动优先：摇杆拖拽立即打断拾取目标
+                _autoPath.Cancel(); // 摇杆移动同样打断自动寻路
                 if (CMain.Time - _lastMoveAt >= MoveIntervalMs)
                 {
                     _lastMoveAt = CMain.Time;
@@ -507,6 +539,44 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] quest-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] quest-{(open ? "open" : "close")} visible={qdia.Visible}");
+        }
+
+        // 大地图开/关（8-4-2）：切换 BigMapDialog.Visible。打开走 Show→TargetMyLocation→SetTargetMap
+        // （当前图已有记录直接显示，否则发 C.RequestMapInfo 等服务端 S.NewMapInfo 回填）+ 面板互斥
+        // （关背包/装备）+ Cancel 摇杆/HUD/拾取/寻路；视口点击设自动寻路后 Update 自动关窗在世界走位。
+        // 日志 [mobile] map-open/close 供 E2E 数据断言。
+        void ToggleBigMap(bool open)
+        {
+            var bigMap = GameScene.Scene != null ? GameScene.Scene.BigMapDialog : null;
+            if (bigMap == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!bigMap.Visible)
+                    {
+                        var inv = GameScene.Scene != null ? GameScene.Scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide();
+                        var chr = GameScene.Scene != null ? GameScene.Scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide();
+                        bigMap.Show();
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                        _autoPath.Cancel();
+                    }
+                }
+                else
+                {
+                    bigMap.Hide();
+                    _autoPath.Cancel();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] map-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] map-{(open ? "open" : "close")} visible={bigMap.Visible}");
         }
 
         // 位置心跳：进图后节流打印实际坐标（androidverify 解析出生点 → 按实际坐标重裁区域 → 二次 push 重启）。

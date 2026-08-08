@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Client;
+using Client.MirControls;
 using Client.MirGraphics;
 using Client.MirNetwork;
 using Client.MirObjects;
 using Client.MirScenes;
 using Client.MirScenes.Dialogs;
+using Client.MirSounds;
 using UnityEngine;
 using C = ClientPackets;
 using S = ServerPackets;
@@ -264,6 +266,12 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.ShareQuest:
                     ShareQuest((S.ShareQuest)p);
                     break;
+                case (short)ServerPacketIds.NewMapInfo:
+                    NewMapInfo((S.NewMapInfo)p);
+                    break;
+                case (short)ServerPacketIds.WorldMapSetup:
+                    WorldMapSetup((S.WorldMapSetupInfo)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -503,6 +511,58 @@ namespace Crystal.Client.Rendering
         // S.ShareQuest：组队分享任务提示（旧客户端经 ChatDialog 广播，未移植）→ 空体保留契约。
         internal static void ShareQuest(S.ShareQuest p) { }
 
+        // ===== 大地图（8-4-2）=====
+        // S.NewMapInfo：单张地图大地图记录（旧客户端 NewMapInfo+CreateBigMapButtons 移植）。构建
+        // BigMapRecord + 移动按钮（Parent=ViewPort，Click→SetTargetMap(目的地)）+ NPC 行（Parent=
+        // BigMapDialog）入 MapInfoList。旧客户端 Add 重复会抛（KeyAlreadyExists），改索引赋值幂等重建。
+        // internal：MapVerify 探针直调测全链。
+        internal static void NewMapInfo(S.NewMapInfo info)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || scene.BigMapDialog == null) return;
+            var record = new BigMapRecord { Index = info.MapIndex, MapInfo = info.Info };
+            CreateBigMapButtons(record);
+            GameScene.MapInfoList[info.MapIndex] = record;
+        }
+
+        // 移动按钮/NPC 行创建（旧客户端 GameScene.CreateBigMapButtons 逐字移植）。移动按钮 MouseEnter
+        // 更新坐标标签（ClientNPCInfo/ClientMovementInfo.Location 为 Shared System.Drawing.Point，
+        // 转换到 MirMath.Point）；Click→SetTargetMap（视口 OnBeforeDraw 按 ScaleX/Y 重定位按钮）。
+        static void CreateBigMapButtons(BigMapRecord record)
+        {
+            var dlg = GameScene.Scene.BigMapDialog;
+            record.MovementButtons.Clear();
+            record.NPCButtons.Clear();
+            foreach (var mInfo in record.MapInfo.Movements)
+            {
+                var button = new MirButton
+                {
+                    Library = Libraries.MapLinkIcon,
+                    Index = mInfo.Icon,
+                    PressedIndex = mInfo.Icon,
+                    Sound = SoundList.ButtonA,
+                    Parent = dlg.ViewPort,
+                    Location = new MPoint(20, 38),
+                    Hint = mInfo.Title,
+                    Visible = false,
+                };
+                button.MouseEnter += (o, e) => dlg.MouseLocation = new MPoint(mInfo.Location.X, mInfo.Location.Y);
+                button.Click += (o, e) => dlg.SetTargetMap(mInfo.Destination);
+                record.MovementButtons.Add(mInfo, button);
+            }
+            foreach (var npcInfo in record.MapInfo.NPCs)
+                record.NPCButtons.Add(new BigMapNPCRow(npcInfo) { Parent = dlg });
+        }
+
+        // S.WorldMapSetup：世界地图开关 + NPC 传送花费（旧客户端 WorldMapSetup 移植）。
+        internal static void WorldMapSetup(S.WorldMapSetupInfo info)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || scene.BigMapDialog == null) return;
+            scene.BigMapDialog.WorldMapSetup(info.Setup);
+            GameScene.TeleportToNPCCost = (uint)info.TeleportToNPCCost;
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -730,6 +790,10 @@ namespace Crystal.Client.Rendering
                 scene.QuestListDialog = qList;
                 var qDetail = new QuestDetailDialog { Parent = scene, Visible = false };
                 scene.QuestDetailDialog = qDetail;
+                // 大地图（8-4-2）：常驻创建默认隐藏（同 NPCDialog 模式）。移动端地图按钮 Show 打开，
+                // Show→TargetMyLocation→SetTargetMap 按需发 C.RequestMapInfo；S.NewMapInfo 回填记录。
+                var bigMap = new BigMapDialog { Parent = scene, Visible = false };
+                scene.BigMapDialog = bigMap;
             }
             catch (Exception ex)
             {
