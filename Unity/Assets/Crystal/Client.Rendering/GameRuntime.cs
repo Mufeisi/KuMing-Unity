@@ -24,6 +24,7 @@ namespace Crystal.Client.Rendering
         public static float RenderScale = 1f;
         public static float DrawDistanceScale = 1f;
         public static int LastObjectDraws; // 探针断言：本帧实际绘制对象数
+        static int _fxErr; // 特效异常计数（进程级累计，日志节流 5 次）
         public static int FramesRendered;  // 渲染完成帧数（render-ready 判据：首帧完成即渲染就绪）
         // 9-4 性能剖析：TickLogic/Render 每帧耗时累计（GameBootstrap.MaybeFpsLog 每 5s 输出均值）。
         static double _logicMs, _renderMs, _sessionMs, _objectsMs;
@@ -100,8 +101,19 @@ namespace Crystal.Client.Rendering
             CrystalSpriteBatch.Clear(new Color(0.1f, 0.1f, 0.1f, 1f));
             GameRenderer.DrawMapTiles(cells, GameSession.MapReader, cx, cy, offX, offY, rangeX, rangeY, libByIndex);
 
-            int drawn = 0;
             int visX = offX + 6, visY = offY + 6;
+
+            // G8 缺口 4/4（移动端特效接入）：背景特效（DrawBehind=true）画在地图上、对象下。
+            // Effect.Draw → MLibrary.DrawBlend → MLibraryUnity.DrawBlend（接驳 CrystalSpriteBatch）。
+            // 空特效列表空跑（安全）；异常单特效不影响整帧（try/catch 隔离）。
+            foreach (var o in MapControl.ObjectsList)
+            {
+                if (o == user || o.Dead) continue;
+                if (!InDrawRange(o, visX, visY)) continue;
+                try { o.DrawBehindEffects(true); } catch (System.Exception ex) { if (++_fxErr <= 5) UnityEngine.Debug.LogWarning($"[render] behind-fx {ex.GetType().Name}"); }
+            }
+
+            int drawn = 0;
             foreach (var o in MapControl.ObjectsList.OrderBy(o => o.MapLocation.Y).ThenBy(o => o.MapLocation.X))
             {
                 if (o == user || o.Dead) continue;
@@ -109,6 +121,8 @@ namespace Crystal.Client.Rendering
                 var lib = o.BodyLibrary as MLibraryUnity;
                 if (lib == null) continue;
                 lib.DrawIndex(o.DrawFrame, o.DrawLocation, o.DrawColour, true, 1f);
+                // G8 4/4：前景特效（DrawBehind=false）随对象 z 序绘制
+                try { o.DrawEffects(true); } catch (System.Exception ex) { if (++_fxErr <= 5) UnityEngine.Debug.LogWarning($"[render] fx {ex.GetType().Name}"); }
                 drawn++;
             }
             LastObjectDraws = drawn;
