@@ -343,8 +343,29 @@ namespace Crystal.Client.Rendering
                 bool outdated = ResourceSync.IsVersionOutdated(remote, manPath);
                 Debug.Log($"[mobile] resync ver={remote.Version} outdated={outdated}");
                 int downloaded = 0;
-                bool ok = ResourceSync.SyncResources(CdnUrl, remote, dataDir, manPath,
-                    (i, n, rel) => { downloaded = i; Debug.Log($"[mobile] resync {i}/{n} {rel}"); });
+                bool ok;
+                if (outdated)
+                {
+                    // 8-9-3 增量优先：本地版本 == delta.BaseVersion → 只下变化/新增；不匹配回退全量。
+                    var local = ResourceSync.LoadLocalManifest(manPath);
+                    var delta = ResourceSync.FetchDelta(CdnUrl);
+                    if (ResourceSync.CanApplyDelta(local, delta))
+                    {
+                        Debug.Log($"[mobile] resync delta base={delta.BaseVersion} files={delta.Files.Count}");
+                        ok = ResourceSync.SyncDelta(CdnUrl, delta, dataDir, manPath, local,
+                            (i, n, rel) => { downloaded = i; Debug.Log($"[mobile] resync {i}/{n} {rel}"); });
+                    }
+                    else
+                    {
+                        ok = ResourceSync.SyncResources(CdnUrl, remote, dataDir, manPath,
+                            (i, n, rel) => { downloaded = i; Debug.Log($"[mobile] resync {i}/{n} {rel}"); });
+                    }
+                }
+                else
+                {
+                    ok = ResourceSync.SyncResources(CdnUrl, remote, dataDir, manPath,
+                        (i, n, rel) => { downloaded = i; Debug.Log($"[mobile] resync {i}/{n} {rel}"); });
+                }
                 Debug.Log(ok ? $"[mobile] resync done files={downloaded}" : "[mobile] resync FAIL");
             }
             catch (Exception ex)

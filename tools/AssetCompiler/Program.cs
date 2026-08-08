@@ -30,12 +30,13 @@ static class Program
             "png-dump" => Golden.PngDump(args),
             "png-scan" => Golden.PngScan(args),
             "manifest" => Manifest.Run(args),
+            "manifest-delta" => ManifestDelta.Run(args),
             "subset" => Subset.Run(args),
             _ => Usage(args[0]),
         };
     }
 
-    static int Usage(string unknown = null)
+    internal static int Usage(string unknown = null)
     {
         Console.WriteLine(unknown != null ? $"unknown command: {unknown}" : "usage:");
         Console.WriteLine("  AssetCompiler compile <lib.Lib> --out <dir> [--page 4096]");
@@ -46,6 +47,7 @@ static class Program
         Console.WriteLine("  AssetCompiler png-dump <png> <x> <y> <n>        // dump 区域 n×n 像素 RGBA 十六进制（诊断对照）");
         Console.WriteLine("  AssetCompiler png-scan <png> <x0> <y0> <x1> <y1> [max] // 扫区域找非零像素（诊断对照）");
         Console.WriteLine("  AssetCompiler manifest <dir> --out <file.json> [--version <v>] // 递归 sha256 资源分发清单（版本校验数据源，顶层 Version）");
+        Console.WriteLine("  AssetCompiler manifest-delta <old.json> <dir> --out <delta.json> [--version <v>] // 增量清单：仅变化/新增文件（8-9-3）");
         return 2;
     }
 

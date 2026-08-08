@@ -32,7 +32,8 @@ namespace Crystal.Rendering.Editor
                        & DownloadCase(Path.Combine(root, "dl"), ref cases)
                        & VersionCase(Path.Combine(root, "ver"), ref cases)
                        & DeterminismCase(Path.Combine(root, "det"), ref cases)
-                       & SyncCase(Path.Combine(root, "sync"), ref cases);
+                       & SyncCase(Path.Combine(root, "sync"), ref cases)
+                       & DeltaCase(Path.Combine(root, "delta"), ref cases);
                 try { Directory.Delete(root, true); } catch { }
                 Debug.Log($"[resourcesync] {(ok ? "PASS" : "FAIL")} cases={cases}");
                 EditorApplication.Exit(ok ? 0 : 1);
@@ -92,6 +93,140 @@ namespace Crystal.Rendering.Editor
             Debug.Log($"[resourcesync] download-case ok={ok}");
             if (ok) cases++;
             return ok;
+        }
+
+        // 场景6（8-9-3）：增量更新端到端。AssetCompiler manifest-delta 生成正确性（Process 调 dll）
+        // + 客户端 SyncDelta：本地 v1 → delta(BaseVersion=v1) 只下变化/新增 → MergeManifest 写回 v2；
+        // 幂等（本地已一致跳过）；BaseVersion 不匹配 → 回退全量 SyncResources（文件级 diff 仍增量）。
+        static bool DeltaCase(string root, ref int cases)
+        {
+            string dll = AssetCompilerDll();
+            if (dll == null)
+            {
+                Debug.Log("[resourcesync] delta-case ok=False（AssetCompiler.dll 未找到）");
+                return false;
+            }
+            string v1 = Path.Combine(root, "v1");
+            string v2 = Path.Combine(root, "v2");
+            Directory.CreateDirectory(Path.Combine(v1, "sub"));
+            Directory.CreateDirectory(Path.Combine(v2, "sub"));
+            File.WriteAllBytes(Path.Combine(v1, "a.bin"), Encoding.ASCII.GetBytes("aaa"));
+            File.WriteAllBytes(Path.Combine(v1, "sub", "s.bin"), Encoding.ASCII.GetBytes("old"));
+            File.WriteAllBytes(Path.Combine(v2, "a.bin"), Encoding.ASCII.GetBytes("aaa"));
+            File.WriteAllBytes(Path.Combine(v2, "sub", "s.bin"), Encoding.ASCII.GetBytes("new!!"));
+            File.WriteAllBytes(Path.Combine(v2, "c.bin"), Encoding.ASCII.GetBytes("newc"));
+
+            string m1 = Path.Combine(root, "m1.json"), m2 = Path.Combine(root, "m2.json"), dJson = Path.Combine(root, "d.json");
+            bool ok = RunAssetCompiler(dll, v1, m1, "1.0")
+                   & RunAssetCompiler(dll, v2, m2, "2.0")
+                   & RunAssetCompilerDelta(dll, m1, v2, dJson, "2.0");
+            var delta = ok ? JsonUtility.FromJson<DeltaManifest>(File.ReadAllText(dJson)) : null;
+            ok &= Check(delta != null && delta.BaseVersion == "1.0" && delta.Version == "2.0" && delta.Count == 2
+                && delta.Files.Count == 2
+                && delta.Files[0].Rel == "c.bin" && delta.Files[1].Rel == "sub/s.bin",
+                "6a manifest-delta 生成：BaseVersion=1.0 Version=2.0 只含 [c.bin, sub/s.bin]（a.bin 相同排除）");
+
+            // 服务器托管 v2 全量 + manifest + delta
+            File.WriteAllText(Path.Combine(v2, ResourceSync.LocalManifestName), JsonUtility.ToJson(
+                JsonUtility.FromJson<ResourceManifest>(File.ReadAllText(m2)), true));
+            File.Copy(dJson, Path.Combine(v2, ResourceSync.DeltaManifestName), true);
+
+            string dest = Path.Combine(root, "dest");
+            Directory.CreateDirectory(dest);
+            // 设备已有 v1 全量 + v1 本地清单
+            File.WriteAllBytes(Path.Combine(dest, "a.bin"), Encoding.ASCII.GetBytes("aaa"));
+            Directory.CreateDirectory(Path.Combine(dest, "sub"));
+            File.WriteAllBytes(Path.Combine(dest, "sub", "s.bin"), Encoding.ASCII.GetBytes("old"));
+            string manPath = Path.Combine(dest, ResourceSync.LocalManifestName);
+            File.Copy(m1, manPath, true);
+
+            using (var server = new MiniHttpServer(v2))
+            {
+                string baseUrl = $"http://127.0.0.1:{server.Port}/";
+                var progress = new List<string>();
+
+                // 6b 增量下载：只下 2 个变化文件，合并写回 v2
+                var remote = ResourceSync.FetchManifest(baseUrl);
+                var local = ResourceSync.LoadLocalManifest(manPath);
+                var deltaFetched = ResourceSync.FetchDelta(baseUrl);
+                ok &= Check(remote != null && remote.Version == "2.0", "6b 远端全量清单 v2");
+                ok &= Check(ResourceSync.IsVersionOutdated(remote, manPath), "6b 版本 1.0≠2.0 → 过期");
+                ok &= Check(ResourceSync.CanApplyDelta(local, deltaFetched), "6b delta BaseVersion=1.0 匹配本地 → 可应用");
+                bool okB = ResourceSync.SyncDelta(baseUrl, deltaFetched, dest, manPath, local,
+                    (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                var merged = ResourceSync.LoadLocalManifest(manPath);
+                ok &= Check(okB && progress.Count == 2 && progress[0] == "1/2:c.bin" && progress[1] == "2/2:sub/s.bin"
+                    && Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(dest, "sub", "s.bin"))) == "new!!"
+                    && Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(dest, "c.bin"))) == "newc"
+                    && Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(dest, "a.bin"))) == "aaa"
+                    && merged != null && merged.Version == "2.0" && merged.Files.Count == 3,
+                    "6b 增量下载 2/2（a.bin 未动）→ 合并清单 v2 共 3 文件");
+
+                // 6c 幂等：再跑 → 本地已一致全跳过（零下载，仍 true）
+                progress.Clear();
+                bool okC = ResourceSync.SyncDelta(baseUrl, deltaFetched, dest, manPath,
+                    ResourceSync.LoadLocalManifest(manPath), (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                ok &= Check(okC && progress.Count == 2 && progress[1] == "2/2:sub/s.bin", "6c 幂等：本地已一致 → 跳过下载仍 true");
+
+                // 6d BaseVersion 不匹配（设备 v0）→ CanApplyDelta false → 回退全量 SyncResources
+                // （文件级 diff 只下缺失/变化：v0 设备只有 a.bin → 检出 [c.bin, sub/s.bin]）
+                string destV0 = Path.Combine(root, "dest-v0");
+                Directory.CreateDirectory(Path.Combine(destV0, "sub"));
+                File.WriteAllBytes(Path.Combine(destV0, "a.bin"), Encoding.ASCII.GetBytes("aaa"));
+                File.WriteAllBytes(Path.Combine(destV0, "sub", "s.bin"), Encoding.ASCII.GetBytes("old"));
+                string v0Man = Path.Combine(destV0, ResourceSync.LocalManifestName);
+                File.WriteAllText(v0Man, JsonUtility.ToJson(new ResourceManifest
+                {
+                    Version = "0.9",
+                    Files = new List<ResourceFileEntry>
+                    {
+                        new ResourceFileEntry { Rel = "a.bin", Size = 3, Sha256 = Sha("aaa") },
+                        new ResourceFileEntry { Rel = "sub/s.bin", Size = 3, Sha256 = Sha("old") },
+                    },
+                }, true));
+                var localV0 = ResourceSync.LoadLocalManifest(v0Man);
+                ok &= Check(!ResourceSync.CanApplyDelta(localV0, deltaFetched), "6d 本地 v0.9 ≠ delta base 1.0 → 不可应用");
+                progress.Clear();
+                bool okD = ResourceSync.SyncResources(baseUrl, remote, destV0, v0Man,
+                    (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                ok &= Check(okD && progress.Count == 2 && progress[0] == "1/2:c.bin" && progress[1] == "2/2:sub/s.bin",
+                    "6d 回退全量：PlanDiff 只检出 [c.bin, sub/s.bin]（a.bin 相同排除）");
+            }
+            Debug.Log($"[resourcesync] delta-case ok={ok}");
+            if (ok) cases++;
+            return ok;
+        }
+
+        static bool RunAssetCompilerDelta(string dll, string oldManifest, string src, string outJson, string version)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("dotnet")
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                };
+                psi.ArgumentList.Add(dll);
+                psi.ArgumentList.Add("manifest-delta");
+                psi.ArgumentList.Add(oldManifest);
+                psi.ArgumentList.Add(src);
+                psi.ArgumentList.Add("--out");
+                psi.ArgumentList.Add(outJson);
+                psi.ArgumentList.Add("--version");
+                psi.ArgumentList.Add(version);
+                using var p = System.Diagnostics.Process.Start(psi);
+                string outp = p.StandardOutput.ReadToEnd();
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                return p.ExitCode == 0 && File.Exists(outJson);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[resourcesync] AssetCompiler manifest-delta 调用失败 {ex.Message}");
+                return false;
+            }
         }
 
         static bool Check(bool cond, string label)
