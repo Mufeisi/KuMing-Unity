@@ -66,11 +66,12 @@
 
 ## C. 移动端适配参考（backlog 待办，参考实现）
 
-### C1. `Assets/Client/Forms/CMain.cs` OnGUI 文本输入 + `TouchScreenKeyboard`
+### C1. `Assets/Client/Forms/CMain.cs` OnGUI 文本输入 + `TouchScreenKeyboard` ✅ 已完成（2026-08-08）
 - **内容**：Android/iOS 软键盘桥——`GUILayout.TextField/PasswordField` + `TouchScreenKeyboard.Open` 绑定 MirTextBox；`useTextFieId` 聚焦路由。
 - **本项目缺口**：backlog「Android 软键盘（阶段7 第3 项子项）」待办（MirTextBox 未移动化）。
 - **可迁移性**：**方法可参考，代码不可照搬**——本项目 UI 是"纯 C# 控件 + RT 直绘"（阶段5 ADR），无 IMGUI；需用 `TouchScreenKeyboard` 接 MirTextBox 逻辑层，RT 直绘键盘光标/候选，不经 IMGUI。
-- **验证**：Android 模拟器 E2E（login 输入框 + 密码框 + 中文输入）。
+- **落地**：`Client.Rendering/SoftKeyboardBridge.cs`——纯逻辑驱动核心 + `ISoftKeyboard` seam（与 Unity TouchScreenKeyboard 解耦，可确定性探针）。sanduan 的 `GUILayout.TextField + FocusControl` 聚焦路由换成 `MirTextBox.InputTextBox` 纯 C# 输入模型 + 控件树 `KeyPress` 路由：`Focus(box)` 开软键盘（初始文本/密码/最大长度走框属性）、`Poll()` 每帧同步文本 + Enter 提交（`KeyPress(Enter)` 进控件树→ChatDialog/登录同链触发）+ 取消/解绑关键盘；`UnitySoftKeyboard` 为 TouchScreenKeyboard 包装（secure 掩码）。`MobileBootstrap` 初始化默认提供者 + Update 每帧 Poll。
+- **验证**：`Build/softkeyboardverify.ps1` → `SoftKeyboardVerify` 8/8 PASS（绑定开键盘透传文本/密码/最大长度、轮询同步、Enter 提交→KeyPress(Enter)+解绑、取消解绑、显式解绑、重复绑定先解旧、null 安全），`[softkeyboardverify] PASS cases=8`。**注**：移动登录/聊天 UI 尚未建成（mobile 登录用 `MobileConfig` 硬编码凭据），桥为能力 + 探针验证，UI 聚焦时调 `Focus(box)` 接入。
 
 ### C2. `CMain.ScreenToWorld` / `ToUnityLocal` / `Settings.SizeRatio`
 - **内容**：逻辑分辨率(旧客户端 1024×768 逻辑坐标)与物理屏坐标互转，带黑边缩放（`SizeRatio`）。
@@ -127,6 +128,6 @@
 | P0 | 移植 SpellObject + ItemObject（补全对象模型） | A1/A2 | 1~2d | ✅ 2026-08-08（CoreVerify 0 错误 + ObjectModelVerify 24/24） |
 | P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ✅ 2026-08-08（CrystalSpriteOutline + DrawOutline 光环，outlineverify 3/3 PASS） |
 | P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ✅ 2026-08-08（LightPulse 脉冲补 R5，lightpulseverify 3 时刻 PASS；AmbientLightBlend 维持 R5 方案） |
-| P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ⬜ |
+| P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ✅ 2026-08-08（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam，softkeyboardverify 8/8 PASS） |
 | P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ⬜ |
 | P3 | MirMath seam 边缘对照（ColorTranslator/SystemInformation） | D1 | 随用随查 | ⬜ |

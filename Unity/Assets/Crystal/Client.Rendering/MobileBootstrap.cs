@@ -110,6 +110,9 @@ namespace Crystal.Client.Rendering
                 else GameSession.CreateCharacter("mobile", MirGender.Male, MirClass.Warrior);
             };
 
+            // P2 软键盘桥：默认接 TouchScreenKeyboard 原生软键盘（MirTextBox 聚焦时 Focus(box) 打开）。
+            SoftKeyboardBridge.Keyboard = new UnitySoftKeyboard();
+
             Debug.Log($"[mobile] boot maps={GameSession.MapDir} atlas={GameRenderer.AtlasDir}");
             try
             {
@@ -139,6 +142,7 @@ namespace Crystal.Client.Rendering
             MobileUiAdapter.ScreenW = GameRuntime.ScreenW;
             MobileUiAdapter.ScreenH = GameRuntime.ScreenH;
             MobileUiAdapter.PollBackKey();
+            SoftKeyboardBridge.Poll(); // 软键盘文本/提交/取消轮询（无活跃框则 no-op）
             // 帧率/触摸诊断日志（真时间节流）：确认主循环活动与触摸事件是否到达 Unity
             if (Time.unscaledTime - _lastFpsLogAt > 5f)
             {
