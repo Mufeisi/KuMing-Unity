@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `Light.shader` | 光源纹理：`SrcAlpha/OneMinusSrcAlpha` + 时间脉冲（0.975±0.05·sin(9t) 亮度/alpha） | R5 灯光已多通道实现（additive + multiply），无脉冲 | 🟡 脉冲/闪烁语义可补进 R5 光源阶段 |
 | `GrayScale.shader` | 变灰 `dot(rgb, 0.299/0.587/0.114)` + `saturate(c+_Color)` 遮罩 | CrystalSpriteBatch 已有 `SetGrayscale`（R1-4 已验证） | ⚪ 已覆盖，仅对照 |
-| `OutLine.shader` | 4 邻域 alpha/rgb 采样描边 + 阴影色(16/8/8)例外 | **无**（怪物/NPC 高亮描边） | 🔴 需要，首个提取项 |
+| `OutLine.shader` | 4 邻域 alpha/rgb 采样描边 + 阴影色(16/8/8)例外 | **无**（怪物/NPC 高亮描边） | ✅ 已完成（2026-08-08） |
 | `BlackWhiteOverlay.shader` | 近白色像素置透明 | **无** | 🟡 需要（部分 UI/特效去白底） |
 | `AmbientLightBlend.shader` | 双纹理叠加（overlay alpha>0 覆盖） | **无**（R5 灯光为多通道） | 🟡 对照 R5 环境光方案 |
 | `Effect.shader` | 特效染色 `saturate(c+_Color)` | Sprite shader 可覆盖 | ⚪ 低 |
@@ -43,6 +43,16 @@
 | `RemoveBlack.shader` | **坏的**：默认 PBR surface 模板，与 2D 精灵无关 | — | ❌ 不取 |
 
 **⚠️ 关键教训**：`NightBlend.shader` 的 frag 函数**无 return 语句**（编译即坏）、`RemoveBlack.shader` 是错误粘贴的 PBR 模板——证明 sanduan 的 shader **不能直接复制**，必须按本项目"效果语义 → Crystal/Sprite 风格 shader → golden/字节验证"流程重做。`docs/migration-status.md` R1-4 的混合语义验证流程即为现成模板。
+
+### B1. `OutLine.shader` 描边复刻（图集兼容实现） ✅ 已完成（2026-08-08）
+- **内容**：精灵描边——4 邻域采样：`a<0.5 视为透明`；`isOutline = 任一邻域透明/近黑`；`isShadowPattern = 当前像素 (16,8,8) 或 r<0.01`；`isOutline && !isShadowPattern → 描边色替换`。
+- **本项目缺口**：怪物/NPC 高亮描边效果无（本项目 OutLine 调用点全是 MirLabel 文本描边，无精灵级调用）。
+- **可迁移性**：**效果可复刻，实现需重做**。sanduan 在 frag 内按 UV±偏移做邻域采样——本项目图集批处理中 quad UV 紧贴帧矩形，UV 邻域会**串读相邻帧**，故该实现图集不兼容。
+- **落地**：
+  - `Shaders/CrystalSpriteOutline.shader`：输出**平涂描边色**（保留 sanduan 阴影例外：a<0.5 / (16,8,8) / r<0.01 丢弃），`Blend SrcAlpha OneMinusSrcAlpha`，NDC 直通同现有 Sprite 系。
+  - `CrystalSpriteBatch`：新增 `SetOutline(bool)/SetOutlineColour(Color)/DrawOutline(tex,src,pos,colour,outlineColour,thickness)`。`DrawOutline` 画 4 向 ±thickness px 偏移描边色副本 + 原图压顶 = **轮廓外 1px 描边光环**（与 MirLabel 文本描边 4 向重绘同款），替代 sanduan 的"边缘像素替换"（高亮语义等价，取后者兼容图集）。
+- **验证**：`Build/outlineverify.ps1` → `OutlineVerify` 3 用例逐像素对照（±2 容差）：t=1/t=2/t=alpha0.5，白方块轮廓光环 + (16,8,8) 与近黑块**不描边** + 原图压顶原样。全过 `[outlineverify] PASS cases=3`。
+- **注**：shader 首版编译错误（`texcol.rgb == fixed3(...)` 向量比较 d3d11 需 `all()` 包裹）已修复——实证 sanduan shader 不可照搬、必须经本项目编译+逐像素验证。
 
 ---
 
@@ -107,7 +117,7 @@
 | 优先级 | 事项 | 对应项 | 预估 | 状态 |
 |---|---|---|---|---|
 | P0 | 移植 SpellObject + ItemObject（补全对象模型） | A1/A2 | 1~2d | ✅ 2026-08-08（CoreVerify 0 错误 + ObjectModelVerify 24/24） |
-| P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ⬜ 下一项 |
+| P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ✅ 2026-08-08（CrystalSpriteOutline + DrawOutline 光环，outlineverify 3/3 PASS） |
 | P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ⬜ |
 | P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ⬜ |
 | P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ⬜ |

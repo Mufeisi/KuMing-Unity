@@ -19,6 +19,8 @@ namespace Crystal.Client.Rendering
     {
         // ---- 状态（镜像 DXManager） ----
         public static bool GrayScale;
+        public static bool OutlineEnabled;
+        public static Color OutlineColour = Color.red;
         public static bool Blending;
         public static float BlendingRate = 1f;
         public static CrystalBlendMode BlendingMode;
@@ -38,10 +40,11 @@ namespace Crystal.Client.Rendering
 
         static readonly Dictionary<Texture2D, List<Quad>> _quads = new Dictionary<Texture2D, List<Quad>>();
         static readonly List<Texture2D> _keys = new List<Texture2D>();
-        static Material _matAlpha, _matAdd, _matReplace, _matMultiply;
+        static Material _matAlpha, _matAdd, _matReplace, _matMultiply, _matOutline;
 
         static readonly int _mainTexId = Shader.PropertyToID("_MainTex");
         static readonly int _grayscaleId = Shader.PropertyToID("_Grayscale");
+        static readonly int _outlineColourId = Shader.PropertyToID("_OutlineColor");
 
         struct Quad
         {
@@ -129,10 +132,12 @@ namespace Crystal.Client.Rendering
                 var tex = _keys[k];
                 var list = _quads[tex];
                 if (list.Count == 0) continue;
-                var mat = ReplaceBlend ? _matReplace
+                var mat = OutlineEnabled ? _matOutline
+                        : ReplaceBlend ? _matReplace
                         : BlendingMode == CrystalBlendMode.MULTIPLY ? _matMultiply
                         : (Blending ? _matAdd : _matAlpha);
                 mat.SetFloat(_grayscaleId, GrayScale ? 1f : 0f);
+                if (OutlineEnabled) mat.SetColor(_outlineColourId, OutlineColour);
                 mat.SetTexture(_mainTexId, tex);
                 mat.SetPass(0);
                 // GL 立即模式提交：顶点已 CPU 烘焙 NDC，Begin 已设 GL 矩阵栈 identity → shader vert 直通 v.vertex.xy。
@@ -193,6 +198,36 @@ namespace Crystal.Client.Rendering
             GrayScale = value;
         }
 
+        // sanduan OutLine.shader 描边状态：开启后 Flush 用 Crystal/SpriteOutline 材质（平涂描边色 + 阴影例外）。
+        public static void SetOutline(bool value)
+        {
+            if (value == OutlineEnabled) return;
+            Flush();
+            OutlineEnabled = value;
+        }
+
+        public static void SetOutlineColour(Color value)
+        {
+            if (value == OutlineColour) return;
+            Flush();
+            OutlineColour = value;
+        }
+
+        // sanduan OutLine.shader 描边（图集兼容实现）：4 向 ±thickness px 平涂描边色副本压后 + 原图压顶，
+        // 得轮廓外 1px 描边光环（与 MirLabel 文本描边 4 向重绘同款）。atlas 批处理中 UV 邻域采样会串读
+        // 相邻帧，故不能在 frag 里按 sanduan 原版做邻域描边——用偏移副本等价复刻效果语义。
+        public static void DrawOutline(Texture2D tex, Rect src, Vector3 pos, Color colour, Color outlineColour, float thickness = 1f)
+        {
+            SetOutlineColour(outlineColour);
+            SetOutline(true);
+            Draw(tex, src, pos + new Vector3(-thickness, 0f, 0f), Color.white);
+            Draw(tex, src, pos + new Vector3(0f, -thickness, 0f), Color.white);
+            Draw(tex, src, pos + new Vector3(thickness, 0f, 0f), Color.white);
+            Draw(tex, src, pos + new Vector3(0f, thickness, 0f), Color.white);
+            SetOutline(false);
+            Draw(tex, src, pos, colour);
+        }
+
         // 对应 DXManager.SetOpacity(float) —— 烘焙进后续 quad 的顶点 alpha。
         public static void SetOpacity(float value)
         {
@@ -247,6 +282,12 @@ namespace Crystal.Client.Rendering
                 var s4 = Shader.Find("Crystal/SpriteMultiply");
                 _matMultiply = new Material(s4);
                 _matMultiply.hideFlags = HideFlags.HideAndDontSave;
+            }
+            if (_matOutline == null)
+            {
+                var s5 = Shader.Find("Crystal/SpriteOutline");
+                _matOutline = new Material(s5);
+                _matOutline.hideFlags = HideFlags.HideAndDontSave;
             }
         }
 
