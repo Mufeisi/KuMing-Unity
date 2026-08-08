@@ -1,4 +1,4 @@
-# OTA manifest 版本系统（8-9-1）verify: Unity batchmode probe, no server needed.
+﻿# OTA manifest 版本系统（8-9-1）verify: Unity batchmode probe, no server needed.
 # 覆盖：场景1 PlanDiff（变更+缺失检出）、场景2 HTTP 端到端下载校验（MiniHttpServer）、
 #   场景3 IsVersionOutdated 版本比对（无清单/版本不同 → 过期；版本一致 → 不过期；
 #   版本一致+文件篡改 → PlanDiff 兜底检出）、场景4 AssetCompiler manifest 确定性

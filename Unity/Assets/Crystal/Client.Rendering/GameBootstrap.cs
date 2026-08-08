@@ -27,15 +27,27 @@ namespace Crystal.Client.Rendering
             // 平台互斥：Android 归 MobileBootstrap（双组件可同挂 Main.unity，单活由平台守卫保证）。
             if (Application.platform == RuntimePlatform.Android) { enabled = false; return; }
             Application.targetFrameRate = 60;
-            // 8-10 性能分级：启动采样（PC 按真实设备分级；探针/Editor 手动注入覆盖）
-            TierQualityApplier.ApplyAuto();
+            // 9-2 异常恢复：崩溃钩子最先注册（running.mark + crash.log），上次异常退出 → 安全模式
+            CrashGuard.Init();
+            // 9-2 首启设置：分辨率/全屏（Crystal.ini 持久化；首启写默认 1280×720 窗口）
+            PcStartup.Apply();
+            GameRuntime.ScreenW = Screen.width;
+            GameRuntime.ScreenH = Screen.height;
+            // 8-10 性能分级 + 9-2 安全模式降级：上次崩溃 → 窗口化默认分辨率 + Medium 档（不再 ApplyAuto 高档）
+            if (CrashGuard.SafeMode)
+            {
+                TierQualityApplier.Apply(DeviceTier.Medium);
+                Debug.Log("[game-bootstrap] safe-mode: 降档 Medium（上次异常退出）");
+            }
+            else
+            {
+                TierQualityApplier.ApplyAuto();
+            }
             string exeDir = Path.GetDirectoryName(Application.dataPath);
             GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.GetFullPath(Path.Combine(exeDir, "../Server/publish/Maps")));
             GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/map")));
             GameRenderer.AtlasDir = Env("CRYSTAL_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/all")));
             GameRenderer.BatchFloor = true;
-            GameRuntime.ScreenW = Screen.width;
-            GameRuntime.ScreenH = Screen.height;
 
             string host = Env("CRYSTAL_NET_HOST", "127.0.0.1");
             int port = GetInt("CRYSTAL_NET_PORT", 7000);

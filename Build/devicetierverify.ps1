@@ -1,4 +1,4 @@
-# 设备分级动态降级（8-10）verify: Unity batchmode probe, no server needed.
+﻿# 设备分级动态降级（8-10）verify: Unity batchmode probe, no server needed.
 # 覆盖：场景1 Classify 决策表 5 组注入断言、场景2 For 三档配置单调性、
 #   场景3 TierQualityApplier.Apply 映射到真实消费点（GameRuntime.RenderScale/DrawDistanceScale、
 #   AtlasLibrary.TextureLevel）+ 热重载切换 + 幂等。
