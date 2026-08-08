@@ -423,6 +423,9 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.MountUpdate:
                     MountUpdate((S.MountUpdate)p);
                     break;
+                case (short)ServerPacketIds.FishingUpdate:
+                    FishingUpdate((S.FishingUpdate)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -1392,6 +1395,24 @@ namespace Crystal.Client.Rendering
             GameScene.Scene?.MountDialog?.RefreshDialog();
         }
 
+        // ── 钓鱼（8-8-3）──
+
+        // S.FishingUpdate：钓鱼状态回声（旧版 GameScene.FishingUpdate 逐字裁剪：无 Redraw）。
+        // 按 ObjectID 分发（PlayerObject.FishingUpdate 已移植：施放/收杆动作入队 + 无竿隐藏
+        // 渔具窗 + FishingPoint/FoundFish）；本机 → 同步施放进度/几率 + 状态条显隐。
+        internal static void FishingUpdate(S.FishingUpdate p)
+        {
+            if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is PlayerObject player)
+                player.FishingUpdate(p);
+            if (MapObject.User == null || p.ObjectID != MapObject.User.ObjectID) return;
+            var status = GameScene.Scene?.FishingStatusDialog;
+            if (status == null) return;
+            status.ProgressPercent = p.ProgressPercent;
+            status.ChancePercent = p.ChancePercent;
+            status.ChanceLabel.Text = string.Format("{0}%", status.ChancePercent);
+            if (p.Fishing) status.Show(); else status.Hide();
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1699,6 +1720,13 @@ namespace Crystal.Client.Rendering
                 // 裁剪（非骑乘核心闭环，旧版 MirItemCell 双击配饰亦未接分支）。
                 var mount = new MountDialog { Parent = scene, Visible = false };
                 scene.MountDialog = mount;
+                // 钓鱼（8-8-3）：FishingDialog（渔具窗）+ FishingStatusDialog（施放状态条，HUD 型
+                // 由 S.FishingUpdate 显隐）常驻创建。Show 无鱼竿弹 NoFishingRod 不打开；FishButton→
+                // C.FishingCast{CastOut=false} 施放；AutoCastButton→C.FishingChangeAutocast。
+                var fishing = new FishingDialog { Parent = scene, Visible = false };
+                scene.FishingDialog = fishing;
+                var fishingStatus = new FishingStatusDialog { Parent = scene, Visible = false };
+                scene.FishingStatusDialog = fishingStatus;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

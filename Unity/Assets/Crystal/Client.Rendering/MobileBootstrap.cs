@@ -56,6 +56,7 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _gameShop = new MobileBag(1280, 720); // 商城按钮（8-7-4）：拍卖行下方开/关商城面板（青绿 tint）
         readonly MobileBag _hero = new MobileBag(1280, 720); // 英雄按钮（8-8-1）：左缘顶部开/关英雄菜单（HeroMenuPanel，白 tint）
         readonly MobileBag _mount = new MobileBag(1280, 720); // 坐骑按钮（8-8-2）：左缘英雄按钮下方开/关坐骑面板（MountDialog，棕 tint）
+        readonly MobileBag _fishing = new MobileBag(1280, 720); // 钓鱼按钮（8-8-3）：左缘坐骑按钮下方开/关渔具窗（FishingDialog，蓝 tint）
         readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex, _friendTex, _guildTex, _mailTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
@@ -157,6 +158,14 @@ namespace Crystal.Client.Rendering
             _mount.SetMargin(new Vector2(90f, 100f + MobileBag.ButtonH + 8f));
             _mount.TintOpen = new Color(0.75f, 0.5f, 0.3f, 0.95f);
             _mount.TintClosed = new Color(0.5f, 0.35f, 0.2f, 0.95f);
+
+            // 开/关渔具窗（FishingDialog：鱼竿/钓组五槽）。左缘坐骑按钮下方（x=90，
+            // y=坐骑 162 + ButtonH 54 + 8 间距 = 224），避开底部聊天按钮区（y≥560）。
+            _fishing.OnToggle = ToggleFishing;
+            _fishing.LeftAnchored = true;
+            _fishing.SetMargin(new Vector2(90f, 100f + (MobileBag.ButtonH + 8f) * 2));
+            _fishing.TintOpen = new Color(0.35f, 0.6f, 0.95f, 0.95f);
+            _fishing.TintClosed = new Color(0.2f, 0.4f, 0.65f, 0.95f);
             // 聊天（8-5-2）：底部左缘聊天/频道按钮。OnOpenInput=开输入框（首次开注入当前频道前缀）
             // + 弹软键盘；OnChannel=切换频道前缀（输入框开着则重写文本前缀并重开软键盘使初始文本生效，
             // 服务器按 !/@ 前缀分频道）。发送走软键盘 Enter（SoftKeyboardBridge Submitted → ChatTextBox_KeyPress
@@ -222,6 +231,9 @@ namespace Crystal.Client.Rendering
                 // 坐骑（8-8-2）：独立顶层窗，Back 在英雄管理之后关闭。
                 var mountDlg = scene != null ? scene.MountDialog : null;
                 if (mountDlg != null && mountDlg.Visible) { mountDlg.Hide(); return true; }
+                // 钓鱼（8-8-3）：渔具窗独立顶层窗，Back 在坐骑之后关闭。
+                var fishingDlg = scene != null ? scene.FishingDialog : null;
+                if (fishingDlg != null && fishingDlg.Visible) { fishingDlg.Hide(); return true; }
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
                 // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
@@ -312,7 +324,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true) || (uiSc.TradeDialog?.Visible == true) || (uiSc.MailListDialog?.Visible == true) || (uiSc.MailComposeLetterDialog?.Visible == true) || (uiSc.MailComposeParcelDialog?.Visible == true) || (uiSc.MailReadLetterDialog?.Visible == true) || (uiSc.MailReadParcelDialog?.Visible == true) || (uiSc.TrustMerchantDialog?.Visible == true) || (uiSc.GameShopDialog?.Visible == true) || (uiSc.HeroMenuPanel?.Visible == true) || (uiSc.HeroManageDialog?.Visible == true) || (uiSc.HeroInventoryDialog?.Visible == true) || (uiSc.MountDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true) || (uiSc.TradeDialog?.Visible == true) || (uiSc.MailListDialog?.Visible == true) || (uiSc.MailComposeLetterDialog?.Visible == true) || (uiSc.MailComposeParcelDialog?.Visible == true) || (uiSc.MailReadLetterDialog?.Visible == true) || (uiSc.MailReadParcelDialog?.Visible == true) || (uiSc.TrustMerchantDialog?.Visible == true) || (uiSc.GameShopDialog?.Visible == true) || (uiSc.HeroMenuPanel?.Visible == true) || (uiSc.HeroManageDialog?.Visible == true) || (uiSc.HeroInventoryDialog?.Visible == true) || (uiSc.MountDialog?.Visible == true) || (uiSc.FishingDialog?.Visible == true));
             // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
             // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
             // 避免寻路激活中重开地图被本帧立刻关闭。
@@ -384,6 +396,8 @@ namespace Crystal.Client.Rendering
                 _hero.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_mount.ScreenW != GameRuntime.ScreenW || _mount.ScreenH != GameRuntime.ScreenH)
                 _mount.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_fishing.ScreenW != GameRuntime.ScreenW || _fishing.ScreenH != GameRuntime.ScreenH)
+                _fishing.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -412,6 +426,8 @@ namespace Crystal.Client.Rendering
             var heroManage = scene != null ? scene.HeroManageDialog : null;
             var heroInv = scene != null ? scene.HeroInventoryDialog : null;
             var mount = scene != null ? scene.MountDialog : null;
+            var fishing = scene != null ? scene.FishingDialog : null;
+            var fishingStatus = scene != null ? scene.FishingStatusDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -466,6 +482,8 @@ namespace Crystal.Client.Rendering
             if (heroManage != null && heroManage.Visible) UiText.WarmTree(heroManage);
             if (heroInv != null && heroInv.Visible) UiText.WarmTree(heroInv);
             if (mount != null && mount.Visible) UiText.WarmTree(mount); // 坐骑（8-8-2）：名称/忠诚度/装备格标签
+            if (fishing != null && fishing.Visible) UiText.WarmTree(fishing); // 钓鱼（8-8-3）：渔具窗
+            if (fishingStatus != null && fishingStatus.Visible) UiText.WarmTree(fishingStatus); // 施放状态条（HUD 型）
             // 备注浮窗（8-6-2）：MemoDialog 为好友面板独立子窗（Title 209），开才预热字形（多行文本框）。
             var memo = scene != null ? scene.MemoDialog : null;
             if (memo != null && memo.Visible) UiText.WarmTree(memo);
@@ -508,6 +526,8 @@ namespace Crystal.Client.Rendering
             if (heroManage != null && heroManage.Visible) heroManage.Draw();
             if (heroInv != null && heroInv.Visible) heroInv.Draw();
             if (mount != null && mount.Visible) mount.Draw();
+            if (fishing != null && fishing.Visible) fishing.Draw();
+            if (fishingStatus != null && fishingStatus.Visible) fishingStatus.Draw();
             if (memo != null && memo.Visible) memo.Draw(); // 备注浮窗（8-6-2）：好友子窗最顶层
             if (modalControls != null)
                 for (int i = 0; i < modalControls.Count; i++)
@@ -528,6 +548,7 @@ namespace Crystal.Client.Rendering
             _gameShop.Render(_bagTex);
             _hero.Render(_bagTex);
             _mount.Render(_bagTex);
+            _fishing.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -614,7 +635,7 @@ namespace Crystal.Client.Rendering
             var friend = scene != null ? scene.FriendDialog : null;
             var guild = scene != null ? scene.GuildDialog : null;
             var tradeDlg = scene != null ? scene.TradeDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible) || (tradeDlg != null && tradeDlg.Visible) || (scene != null && scene.MailListDialog != null && scene.MailListDialog.Visible) || (scene != null && scene.MailComposeLetterDialog != null && scene.MailComposeLetterDialog.Visible) || (scene != null && scene.MailComposeParcelDialog != null && scene.MailComposeParcelDialog.Visible) || (scene != null && scene.MailReadLetterDialog != null && scene.MailReadLetterDialog.Visible) || (scene != null && scene.MailReadParcelDialog != null && scene.MailReadParcelDialog.Visible) || (scene != null && scene.TrustMerchantDialog != null && scene.TrustMerchantDialog.Visible) || (scene != null && scene.GameShopDialog != null && scene.GameShopDialog.Visible) || (scene != null && scene.HeroMenuPanel != null && scene.HeroMenuPanel.Visible) || (scene != null && scene.HeroManageDialog != null && scene.HeroManageDialog.Visible) || (scene != null && scene.HeroInventoryDialog != null && scene.HeroInventoryDialog.Visible) || (scene != null && scene.MountDialog != null && scene.MountDialog.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible) || (tradeDlg != null && tradeDlg.Visible) || (scene != null && scene.MailListDialog != null && scene.MailListDialog.Visible) || (scene != null && scene.MailComposeLetterDialog != null && scene.MailComposeLetterDialog.Visible) || (scene != null && scene.MailComposeParcelDialog != null && scene.MailComposeParcelDialog.Visible) || (scene != null && scene.MailReadLetterDialog != null && scene.MailReadLetterDialog.Visible) || (scene != null && scene.MailReadParcelDialog != null && scene.MailReadParcelDialog.Visible) || (scene != null && scene.TrustMerchantDialog != null && scene.TrustMerchantDialog.Visible) || (scene != null && scene.GameShopDialog != null && scene.GameShopDialog.Visible) || (scene != null && scene.HeroMenuPanel != null && scene.HeroMenuPanel.Visible) || (scene != null && scene.HeroManageDialog != null && scene.HeroManageDialog.Visible) || (scene != null && scene.HeroInventoryDialog != null && scene.HeroInventoryDialog.Visible) || (scene != null && scene.MountDialog != null && scene.MountDialog.Visible) || (scene != null && scene.FishingDialog != null && scene.FishingDialog.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -635,7 +656,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui) || _friend.OnTouch(id, ph, ui) || _guild.OnTouch(id, ph, ui) || _mail.OnTouch(id, ph, ui) || _market.OnTouch(id, ph, ui) || _gameShop.OnTouch(id, ph, ui) || _hero.OnTouch(id, ph, ui) || _mount.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队/好友/行会/邮件/拍卖行/商城/英雄/坐骑按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui) || _friend.OnTouch(id, ph, ui) || _guild.OnTouch(id, ph, ui) || _mail.OnTouch(id, ph, ui) || _market.OnTouch(id, ph, ui) || _gameShop.OnTouch(id, ph, ui) || _hero.OnTouch(id, ph, ui) || _mount.OnTouch(id, ph, ui) || _fishing.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队/好友/行会/邮件/拍卖行/商城/英雄/坐骑/钓鱼按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -1179,6 +1200,60 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] mount-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] mount-{(open ? "open" : "close")} visible={mount.Visible}");
+        }
+
+        // 渔具窗开/关（8-8-3）：切换 FishingDialog.Visible。开走 Show()——无鱼竿
+        // （!User.HasFishingRod）弹 NoFishingRod 提示不打开（旧版 Show 语义）；有鱼竿显示 +
+        // 互斥关背包/装备/组队/好友/行会/邮件/拍卖行/商城/英雄菜单/坐骑 + Cancel 摇杆/HUD/
+        // 拾取/寻路。关只 Hide（FishingStatusDialog 由 S.FishingUpdate 独立控制显隐）。
+        void ToggleFishing(bool open)
+        {
+            var scene = GameScene.Scene;
+            var fishing = scene != null ? scene.FishingDialog : null;
+            if (fishing == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!fishing.Visible)
+                    {
+                        var inv = scene != null ? scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide();
+                        var chr = scene != null ? scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide();
+                        var group = scene != null ? scene.GroupDialog : null;
+                        if (group != null && group.Visible) group.Hide();
+                        var friend = scene != null ? scene.FriendDialog : null;
+                        if (friend != null && friend.Visible) friend.Hide();
+                        var guild = scene != null ? scene.GuildDialog : null;
+                        if (guild != null && guild.Visible) guild.Hide();
+                        var mail = scene != null ? scene.MailListDialog : null;
+                        if (mail != null && mail.Visible) mail.Hide();
+                        var market = scene != null ? scene.TrustMerchantDialog : null;
+                        if (market != null && market.Visible) market.Hide();
+                        var shop = scene != null ? scene.GameShopDialog : null;
+                        if (shop != null && shop.Visible) shop.Hide();
+                        var heroMenu = scene != null ? scene.HeroMenuPanel : null;
+                        if (heroMenu != null && heroMenu.Visible) heroMenu.Visible = false;
+                        var mount = scene != null ? scene.MountDialog : null;
+                        if (mount != null && mount.Visible) mount.Hide();
+                        fishing.Show(); // 无鱼竿内部弹 NoFishingRod 不打开
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                        _autoPath.Cancel();
+                    }
+                }
+                else
+                {
+                    fishing.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] fishing-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] fishing-{(open ? "open" : "close")} visible={fishing.Visible}");
         }
 
         // 瞬态模态查找（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树且 Modal=true 阻断下层。

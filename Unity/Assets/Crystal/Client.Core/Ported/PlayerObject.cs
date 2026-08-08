@@ -243,7 +243,7 @@ namespace Client.MirObjects
 
             if (!HasFishingRod)
             {
-                GameScene.Scene.FishingDialog.Hide();
+                GameScene.Scene.FishingDialog?.Hide(); // 8-8-3 null 守卫（对象加载早于对话框常驻时）
             }          
 
             FishingPoint = new Point(p.FishingPoint.X, p.FishingPoint.Y);
