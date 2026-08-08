@@ -25,3 +25,4 @@
 - [ ] `docs/build-artifact-hashes.txt` 首字节带 UTF-8 BOM（PowerShell `Set-Content`），不影响使用。
 - [ ] **特效绘制接入运行时后补 ParticleScale 消费（8-10 预留）** — 2D 精灵批栈 GameRuntime.Render 走 `lib.DrawIndex` 不画 `o.Draw()` 特效，ParticleScale 配置保留无可见消费点；待特效绘制接入运行时（Effect.cs Count/Duration 按 scale 缩）后补。
 - [ ] **`BuildLocalIndex` 全量 sha256 启动开销（8-9-2 登记）** — 版本一致时正常启动仍全量 hash 本地资源（90MB/数百文件约 1-2s）；可先按 size 快速通过，仅不符项 hash。
+- [ ] **Release Server 持续卡顿（发布阻塞，待排障）** — Release 构建的 Server.exe + 客户端实测 session=314ms/帧持续卡（Debug Server 稳定 1.7-4ms）。疑似 Server 主循环（`Envir.cs` 2100+ ThreadLoop）在 Release 优化下 tick 间无节流（2188 行 `if (Players.Count==0) Thread.Sleep(1)` 历史节流被注释）→ 发包风暴。修复方向：tick 间补 Sleep/节流；发布暂用 Debug Server。
