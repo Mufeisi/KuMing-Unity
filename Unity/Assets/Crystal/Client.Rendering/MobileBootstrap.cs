@@ -66,6 +66,8 @@ namespace Crystal.Client.Rendering
         {
             if (Application.platform != RuntimePlatform.Android) { enabled = false; return; }
             Application.targetFrameRate = 60;
+            // 8-10 性能分级：启动采样（模拟器 SwiftShader 判 Low → 自动降渲染分辨率/距离/纹理）
+            TierQualityApplier.ApplyAuto();
             CMain.LogImpl = Debug.Log; // 还原旧客户端 CMain.Log 到 Unity 日志（Android logcat 可见）
             // 模拟器（swiftshader 软渲染）2400x1080 全屏负载过高 → 帧率<5，触摸 Began 帧被合并丢失
             // （swipe 移动失效根因）。降 backbuffer 分辨率换取帧率；真机 GPU 非 SwiftShader 保持原生。

@@ -27,6 +27,8 @@ namespace Crystal.Client.Rendering
             // 平台互斥：Android 归 MobileBootstrap（双组件可同挂 Main.unity，单活由平台守卫保证）。
             if (Application.platform == RuntimePlatform.Android) { enabled = false; return; }
             Application.targetFrameRate = 60;
+            // 8-10 性能分级：启动采样（PC 按真实设备分级；探针/Editor 手动注入覆盖）
+            TierQualityApplier.ApplyAuto();
             string exeDir = Path.GetDirectoryName(Application.dataPath);
             GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.GetFullPath(Path.Combine(exeDir, "../Server/publish/Maps")));
             GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/map")));

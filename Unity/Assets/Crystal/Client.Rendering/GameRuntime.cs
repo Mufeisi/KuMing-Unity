@@ -19,6 +19,10 @@ namespace Crystal.Client.Rendering
         static AtlasLibrary[] _libCache; // 当前地图 libIndex→AtlasLibrary 数组
 
         public static int ScreenW = 1280, ScreenH = 720;
+        // 8-10 性能分级：RenderScale=内部渲染分辨率缩放（Begin 传缩放后尺寸 → EmitQuad 归一化 NDC 放大）；
+        // DrawDistanceScale=远处对象更新/绘制距离系数（按视野半径缩放过滤，减 CPU 与 draw call）。
+        public static float RenderScale = 1f;
+        public static float DrawDistanceScale = 1f;
         public static int LastObjectDraws; // 探针断言：本帧实际绘制对象数
         public static int FramesRendered;  // 渲染完成帧数（render-ready 判据：首帧完成即渲染就绪）
 
@@ -52,8 +56,20 @@ namespace Crystal.Client.Rendering
 
         static void ProcessObjects()
         {
+            int visX = MapControl.OffSetX + 6, visY = MapControl.OffSetY + 6;
             foreach (var o in MapControl.ObjectsList)
-                if (o != MapObject.User) o.Process();
+                if (o != MapObject.User && InDrawRange(o, visX, visY)) o.Process();
+        }
+
+        // 8-10 距离裁剪：DrawDistanceScale<1 时按视野半径缩放，远处对象跳过 Process/Draw（CPU+draw call 双减）。
+        static bool InDrawRange(MapObject o, int visX, int visY)
+        {
+            if (DrawDistanceScale >= 0.999f) return true;
+            var u = GameSession.User;
+            int dx = o.MapLocation.X - u.Movement.X, dy = o.MapLocation.Y - u.Movement.Y;
+            int limitX = Mathf.Max(4, (int)(visX * DrawDistanceScale));
+            int limitY = Mathf.Max(4, (int)(visY * DrawDistanceScale));
+            return Mathf.Abs(dx) <= limitX && Mathf.Abs(dy) <= limitY;
         }
 
         static void Render(RenderTexture target)
@@ -66,14 +82,16 @@ namespace Crystal.Client.Rendering
             var cells = GameSession.MapReader.MapCells;
             var libByIndex = GetLibIndex(cells);
 
-            CrystalSpriteBatch.Begin(target, ScreenW, ScreenH);
+            CrystalSpriteBatch.Begin(target, (int)(ScreenW * RenderScale), (int)(ScreenH * RenderScale));
             CrystalSpriteBatch.Clear(new Color(0.1f, 0.1f, 0.1f, 1f));
             GameRenderer.DrawMapTiles(cells, GameSession.MapReader, cx, cy, offX, offY, rangeX, rangeY, libByIndex);
 
             int drawn = 0;
+            int visX = offX + 6, visY = offY + 6;
             foreach (var o in MapControl.ObjectsList.OrderBy(o => o.MapLocation.Y).ThenBy(o => o.MapLocation.X))
             {
                 if (o == user || o.Dead) continue;
+                if (!InDrawRange(o, visX, visY)) continue; // 8-10 远处对象不绘制
                 var lib = o.BodyLibrary as MLibraryUnity;
                 if (lib == null) continue;
                 lib.DrawIndex(o.DrawFrame, o.DrawLocation, o.DrawColour, true, 1f);

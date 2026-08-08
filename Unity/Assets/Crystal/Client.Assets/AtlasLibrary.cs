@@ -9,6 +9,9 @@ namespace Crystal.Client.Assets
     // 渲染层直接消费 GetFrame/GetPage；页纹理由调用方持有生命周期。
     public sealed class AtlasLibrary
     {
+        // 8-10 性能分级纹理等级（0 全/1 中/2 低）：>0 时 LoadTexture 最近邻子采样降尺寸，
+        // 减显存与采样带宽；仅对新加载页生效（TierQualityApplier 启动时分级）。
+        public static int TextureLevel;
         public string Dir { get; private set; }
         public LibManifest Manifest { get; private set; }
         public SpriteFrame[] Frames { get; private set; }
@@ -103,6 +106,24 @@ namespace Crystal.Client.Assets
             // 点过滤：镜像旧客户端像素画（DX9 点采样）。golden 为精确纹素，双线性会在非整分
             // UV 处插值出 ±1 残差（RenderDump 实证 675 高帧 39 像素差），点过滤可逐字节复现。
             tex.filterMode = FilterMode.Point;
+            // 8-10 性能分级纹理等级：等级>0 时最近邻子采样降尺寸（像素画风格一致），
+            // 减显存与采样带宽；仅对新加载纹理生效（已缓存页不重载）。UV 归一化不受尺寸影响。
+            if (TextureLevel > 0 && tex.width > 1 && tex.height > 1)
+            {
+                int level = Mathf.Min(TextureLevel, 2);
+                int w = Mathf.Max(1, tex.width >> level);
+                int h = Mathf.Max(1, tex.height >> level);
+                var src = tex.GetPixels32();
+                var dst = new Color32[w * h];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        dst[y * w + x] = src[(y << level) * tex.width + (x << level)];
+                UnityEngine.Object.DestroyImmediate(tex);
+                tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                tex.SetPixels32(dst);
+                tex.Apply();
+                tex.filterMode = FilterMode.Point;
+            }
             return tex;
         }
     }
