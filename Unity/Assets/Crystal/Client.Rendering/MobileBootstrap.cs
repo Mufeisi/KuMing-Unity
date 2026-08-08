@@ -68,16 +68,14 @@ namespace Crystal.Client.Rendering
                 GameRuntime.ScreenW = Screen.width;
                 GameRuntime.ScreenH = Screen.height;
             }
-            // 适配层尺寸同步（8-0）：Start 即对齐，消除与 TouchInputAdapter 的 Update 排序依赖。
-            MobileUiAdapter.ScreenW = GameRuntime.ScreenW;
-            MobileUiAdapter.ScreenH = GameRuntime.ScreenH;
+            // 分辨率单一扇出（P2 分辨率缩放统一）：渲染真值 → 触摸翻转基准 + 对话框布局，
+            // 消灭三处手动分散同步；Start 即对齐，消除与 TouchInputAdapter 的 Update 排序依赖。
+            ScreenMetrics.Set(GameRuntime.ScreenW, GameRuntime.ScreenH);
             // 文本桥（R8 管线，阶段8 第2项）：TextRenderer seam 静态委托 → Unity 动态字体字形，
             // 主循环/对话框标签绘制依赖（MirLabel.DrawText 未装实现时是 no-op）。PreWarm 预热
             // ASCII 字形集，WarmTree 批前预构建在 RenderHud 每帧调用（缓存命中，仅首帧合成）。
             UiText.Install();
             UiText.PreWarm(8);
-            Settings.ScreenWidth = GameRuntime.ScreenW;  // MainDialog.Location 依赖（旧坐标系：左上原点）
-            Settings.ScreenHeight = GameRuntime.ScreenH;
             _bag.OnToggle = ToggleBag;
             _equip.OnToggle = ToggleChar;
             // 装备按钮锚点：背包按钮正下方（90, 140+54+8），绿 tint 与背包黄区分（E2E 颜色定位）。
@@ -138,9 +136,8 @@ namespace Crystal.Client.Rendering
         void Update()
         {
             if (!_booted) return;
-            // 适配层尺寸同步（8-0）+ 返回键轮询（Android Back → 关顶层对话框）。
-            MobileUiAdapter.ScreenW = GameRuntime.ScreenW;
-            MobileUiAdapter.ScreenH = GameRuntime.ScreenH;
+            // 分辨率扇出（P2 统一：渲染真值→UI 消费方，早退零成本）+ 返回键轮询（Android Back → 关顶层对话框）。
+            ScreenMetrics.Set(GameRuntime.ScreenW, GameRuntime.ScreenH);
             MobileUiAdapter.PollBackKey();
             SoftKeyboardBridge.Poll(); // 软键盘文本/提交/取消轮询（无活跃框则 no-op）
             // 帧率/触摸诊断日志（真时间节流）：确认主循环活动与触摸事件是否到达 Unity

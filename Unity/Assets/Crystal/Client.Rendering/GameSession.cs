@@ -436,8 +436,7 @@ namespace Crystal.Client.Rendering
         {
             var scene = GameScene.Scene;
             if (scene == null) return;
-            Settings.ScreenWidth = GameRuntime.ScreenW;
-            Settings.ScreenHeight = GameRuntime.ScreenH;
+            ScreenMetrics.Set(GameRuntime.ScreenW, GameRuntime.ScreenH); // P2 分辨率统一：对话框布局基准对齐渲染真值
             if (Libraries.Prguse == null) Libraries.Prguse = GameRenderer.EnsureMLibrary("Prguse");
             if (Libraries.Prguse2 == null) Libraries.Prguse2 = GameRenderer.EnsureMLibrary("Prguse2");
             if (Libraries.Items == null) Libraries.Items = GameRenderer.EnsureMLibrary("Items");

@@ -73,10 +73,13 @@
 - **落地**：`Client.Rendering/SoftKeyboardBridge.cs`——纯逻辑驱动核心 + `ISoftKeyboard` seam（与 Unity TouchScreenKeyboard 解耦，可确定性探针）。sanduan 的 `GUILayout.TextField + FocusControl` 聚焦路由换成 `MirTextBox.InputTextBox` 纯 C# 输入模型 + 控件树 `KeyPress` 路由：`Focus(box)` 开软键盘（初始文本/密码/最大长度走框属性）、`Poll()` 每帧同步文本 + Enter 提交（`KeyPress(Enter)` 进控件树→ChatDialog/登录同链触发）+ 取消/解绑关键盘；`UnitySoftKeyboard` 为 TouchScreenKeyboard 包装（secure 掩码）。`MobileBootstrap` 初始化默认提供者 + Update 每帧 Poll。
 - **验证**：`Build/softkeyboardverify.ps1` → `SoftKeyboardVerify` 8/8 PASS（绑定开键盘透传文本/密码/最大长度、轮询同步、Enter 提交→KeyPress(Enter)+解绑、取消解绑、显式解绑、重复绑定先解旧、null 安全），`[softkeyboardverify] PASS cases=8`。**注**：移动登录/聊天 UI 尚未建成（mobile 登录用 `MobileConfig` 硬编码凭据），桥为能力 + 探针验证，UI 聚焦时调 `Focus(box)` 接入。
 
-### C2. `CMain.ScreenToWorld` / `ToUnityLocal` / `Settings.SizeRatio`
-- **内容**：逻辑分辨率(旧客户端 1024×768 逻辑坐标)与物理屏坐标互转，带黑边缩放（`SizeRatio`）。
-- **本项目缺口**：移动 UI 适配层（计划 X-1/8-0 涉及）。
-- **可迁移性**：**算法参考**。本项目已有 `TouchInputMapper`（物理/逻辑坐标缩放，阶段7），可对照统一。
+### C2. `CMain.ScreenToWorld` / `ToUnityLocal` / `Settings.SizeRatio` ✅ 已完成（2026-08-08，对照决策：不引入黑边缩放）
+- **内容**：逻辑分辨率（旧客户端 1024×768 逻辑坐标）与物理屏坐标互转，带黑边缩放（`SizeRatio`）。
+- **本项目现状**：移动 UI 适配层（阶段8 0 项）已建成——`MobileUiAdapter.ToUi` 唯一翻转点（y 镜像）+ `TouchRect` 最小触控 44px + 边缘锚点布局（HUD/背包随 `ScreenW/H` 重算）。
+- **可迁移性**：**算法参考，实现不可照搬**。sanduan 的 `SizeRatio` 是**死代码**：`Settings.SizeRatio` 恒 1.0 **从未被赋值**、`OnRenderObject` 的黑边缩放矩阵**整段被注释**、`ScreenToWorld/ToUnityLocal` 只在 `SizeRatio=1` 时退化为 1:1 恒等（offset=0）。
+- **对照决策**：本项目**原生 1:1 渲染**（`CrystalSpriteBatch.Begin` 像素矩阵直通 backbuffer，无逻辑分辨率）+ 边缘锚点自适应布局（HUD 右下/背包右上随屏重算）+ 最小触控尺寸兜底（视觉保持像素风固定尺寸、命中区 ≥44px）——任意分辨率/宽高比无需黑边，语义超集 → **不引入 SizeRatio 黑边缩放**。
+- **落地（统一收口）**：`Client.Rendering/ScreenMetrics.cs` 移动 UI 屏幕尺寸**单一扇出点**——渲染真值（`GameRuntime.ScreenW/H`，PC 壳/探针直写）→ 触摸 y 翻转基准（`MobileUiAdapter.ScreenW/H`）+ 对话框布局（`Settings.ScreenWidth/Height`）。`MobileBootstrap` Start/Update 与 `GameSession.InitInGameDialogs` 三处手动分散同步统一路由 `ScreenMetrics.Set`，消灭翻转基准与渲染高度漂移（X-1 y 镜像 bug 同类根因）。坐标契约（纯镜像 y 翻转、无缩放无黑边、边缘锚点重算、MinTouchSize 下限）由 `ResolutionVerify` 探针钉死。
+- **验证**：`Build/resolutionverify.ps1` → `ResolutionVerify` 14/14 PASS（扇出 + 早退 no-op + ToUi 屏角精确镜像/中点不动/换分辨率基准更新 + HUD 720p/1080p 锚点 + 背包 720p/1080p 锚点 + SetMargin 重算 + MinTouchSize 44px 下限 + 合规尺寸不缩），`[resolutionverify] PASS cases=14`；回归 mobileuiverify 7/7 + softkeyboardverify 8/8。
 
 ### C3. `CMain.HandleTouchInput()`（触摸→鼠标事件桥）
 - **内容**：`Input.touches` → `MouseEventArgs` 桥（Began=MouseClick、Moved=滚轮、Ended=Down+Click+Up）。
@@ -129,5 +132,5 @@
 | P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ✅ 2026-08-08（CrystalSpriteOutline + DrawOutline 光环，outlineverify 3/3 PASS） |
 | P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ✅ 2026-08-08（LightPulse 脉冲补 R5，lightpulseverify 3 时刻 PASS；AmbientLightBlend 维持 R5 方案） |
 | P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ✅ 2026-08-08（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam，softkeyboardverify 8/8 PASS） |
-| P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ⬜ |
+| P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ✅ 2026-08-08（ScreenMetrics 单一扇出 + ResolutionVerify 14/14；对照决策：sanduan SizeRatio 死代码，不引入黑边） |
 | P3 | MirMath seam 边缘对照（ColorTranslator/SystemInformation） | D1 | 随用随查 | ⬜ |
