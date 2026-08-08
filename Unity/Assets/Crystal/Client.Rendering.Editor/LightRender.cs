@@ -60,6 +60,14 @@ namespace Crystal.Rendering.Editor
             string outPath = Environment.GetEnvironmentVariable("CRYSTAL_OUT");
             if (string.IsNullOrEmpty(outPath)) outPath = "Build/light-render.png";
 
+            // sanduan Light.shader 脉冲模式：CRYSTAL_TIME=<秒> 时，每灯 tint 经 LightPulse.Modulate 调制，
+            // CPU 期望同走脉冲公式 → 字节级验证闪烁语义。未设时保持 R5 静态行为。
+            float timeSec = float.NaN;
+            string timeSpec = Environment.GetEnvironmentVariable("CRYSTAL_TIME");
+            bool timeSet = !string.IsNullOrEmpty(timeSpec) && float.TryParse(timeSpec, out timeSec);
+            if (timeSet)
+                Console.WriteLine($"light-render: pulse t={timeSec}s brightness={LightPulse.Brightness(timeSec)} alpha={LightPulse.Alpha(timeSec)}");
+
             var lights = new List<Light>();
             foreach (string tok in lightSpec.Split(';'))
             {
@@ -108,8 +116,9 @@ namespace Crystal.Rendering.Editor
                 foreach (var l in lights)
                 {
                     var glow = Glow(l.SizeIdx);
-                    CrystalSpriteBatch.Draw(glow, new Rect(0, 0, l.W, l.H), new Vector3(l.X0, l.Y0, 0f),
-                        new Color(l.Tr / 255f, l.Tg / 255f, l.Tb / 255f, 1f));
+                    var tint = new Color(l.Tr / 255f, l.Tg / 255f, l.Tb / 255f, 1f);
+                    if (timeSet) tint = LightPulse.Modulate(tint, timeSec);
+                    CrystalSpriteBatch.Draw(glow, new Rect(0, 0, l.W, l.H), new Vector3(l.X0, l.Y0, 0f), tint);
                 }
                 CrystalSpriteBatch.Flush();
                 CrystalSpriteBatch.SetBlend(false);
@@ -154,9 +163,18 @@ namespace Crystal.Rendering.Editor
                             int col = (int)Math.Round((x + 0.5 - l.X0) * (l.W - 1) / (double)l.W);
                             int row = (int)Math.Round((1 - (y + 0.5 - l.Y0) / (double)l.H) * (l.H - 1));
                             var g = _glowPx[l.SizeIdx][row * l.W + col];
-                            er = Math.Min(255, er + (int)Math.Round(g.r * l.Tr * g.a / 65025.0));
-                            eg = Math.Min(255, eg + (int)Math.Round(g.g * l.Tg * g.a / 65025.0));
-                            eb = Math.Min(255, eb + (int)Math.Round(g.b * l.Tb * g.a / 65025.0));
+                            // 脉冲：tint.rgb×brightness，src.a=grad.a×alpha（与 GPU 绘制色 Modulate 一致）
+                            double br = l.Tr, bg = l.Tg, bb = l.Tb, ba = 1.0;
+                            if (timeSet)
+                            {
+                                br *= LightPulse.Brightness(timeSec);
+                                bg *= LightPulse.Brightness(timeSec);
+                                bb *= LightPulse.Brightness(timeSec);
+                                ba *= LightPulse.Alpha(timeSec);
+                            }
+                            er = Math.Min(255, er + (int)Math.Round(g.r * br * (g.a * ba) / 65025.0));
+                            eg = Math.Min(255, eg + (int)Math.Round(g.g * bg * (g.a * ba) / 65025.0));
+                            eb = Math.Min(255, eb + (int)Math.Round(g.b * bb * (g.a * ba) / 65025.0));
                         }
                         var got = lightTex[y * rtW + x];
                         if (Math.Abs(got.r - er) > 2 || Math.Abs(got.g - eg) > 2 || Math.Abs(got.b - eb) > 2)
@@ -188,6 +206,8 @@ namespace Crystal.Rendering.Editor
                 WritePng(lightTex, rtW, rtH, Path.ChangeExtension(outPath, null) + "-light.png");
                 WritePng(sceneAfter, rtW, rtH, outPath);
                 Console.WriteLine($"light-render: wrote {Path.GetFullPath(outPath)} fail={fail}");
+                if (timeSet)
+                    Console.WriteLine(fail == 0 ? "[lightpulseverify] PASS" : $"[lightpulseverify] FAIL fail={fail}");
                 EditorApplication.Exit(fail == 0 ? 0 : 1);
             }
             finally

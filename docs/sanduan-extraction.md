@@ -32,11 +32,11 @@
 
 | sanduan shader | 效果 | 本项目现状 | 提取价值 |
 |---|---|---|---|
-| `Light.shader` | 光源纹理：`SrcAlpha/OneMinusSrcAlpha` + 时间脉冲（0.975±0.05·sin(9t) 亮度/alpha） | R5 灯光已多通道实现（additive + multiply），无脉冲 | 🟡 脉冲/闪烁语义可补进 R5 光源阶段 |
+| `Light.shader` | 光源纹理：`SrcAlpha/OneMinusSrcAlpha` + 时间脉冲（0.975±0.05·sin(9t) 亮度/alpha） | R5 灯光已多通道实现（additive + multiply），无脉冲 | ✅ 已完成（2026-08-08，脉冲补进 R5 光源阶段） |
 | `GrayScale.shader` | 变灰 `dot(rgb, 0.299/0.587/0.114)` + `saturate(c+_Color)` 遮罩 | CrystalSpriteBatch 已有 `SetGrayscale`（R1-4 已验证） | ⚪ 已覆盖，仅对照 |
 | `OutLine.shader` | 4 邻域 alpha/rgb 采样描边 + 阴影色(16/8/8)例外 | **无**（怪物/NPC 高亮描边） | ✅ 已完成（2026-08-08） |
 | `BlackWhiteOverlay.shader` | 近白色像素置透明 | **无** | 🟡 需要（部分 UI/特效去白底） |
-| `AmbientLightBlend.shader` | 双纹理叠加（overlay alpha>0 覆盖） | **无**（R5 灯光为多通道） | 🟡 对照 R5 环境光方案 |
+| `AmbientLightBlend.shader` | 双纹理叠加（overlay alpha>0 覆盖） | **无**（R5 灯光为多通道） | ✅ 已对照（2026-08-08，维持 R5 动态多通道，不取静态覆盖方案） |
 | `Effect.shader` | 特效染色 `saturate(c+_Color)` | Sprite shader 可覆盖 | ⚪ 低 |
 | `Gradient.shader` | 顶点色上下渐变（屏空间） | 无 | 🟢 低优先（GDI+ 渐变基线留待阶段4 golden） |
 | `NightBlend.shader` | 乘混合 `DstColor Zero` | = CrystalSpriteMultiply（已验证） | ⚪ 已覆盖 |
@@ -53,6 +53,14 @@
   - `CrystalSpriteBatch`：新增 `SetOutline(bool)/SetOutlineColour(Color)/DrawOutline(tex,src,pos,colour,outlineColour,thickness)`。`DrawOutline` 画 4 向 ±thickness px 偏移描边色副本 + 原图压顶 = **轮廓外 1px 描边光环**（与 MirLabel 文本描边 4 向重绘同款），替代 sanduan 的"边缘像素替换"（高亮语义等价，取后者兼容图集）。
 - **验证**：`Build/outlineverify.ps1` → `OutlineVerify` 3 用例逐像素对照（±2 容差）：t=1/t=2/t=alpha0.5，白方块轮廓光环 + (16,8,8) 与近黑块**不描边** + 原图压顶原样。全过 `[outlineverify] PASS cases=3`。
 - **注**：shader 首版编译错误（`texcol.rgb == fixed3(...)` 向量比较 d3d11 需 `all()` 包裹）已修复——实证 sanduan shader 不可照搬、必须经本项目编译+逐像素验证。
+
+### B2. `Light.shader` 光源时间脉冲补 R5 + `AmbientLightBlend.shader` 对照 ✅ 已完成（2026-08-08）
+- **Light.shader 脉冲**：`brightness = 0.975+0.025·sin(9t)`、`alpha = 0.975+0.05·sin(9t)`（火焰/光源闪烁语义）。
+- **本项目缺口**：R5 灯光管线（`LightRender` 探针，暗色 clear + additive 光源径向渐变 + Zero/SrcColor multiply 合成，字节级 fail=0）为**静态**，无脉冲。
+- **落地**：`Client.Rendering/LightPulse.cs` 单一事实来源（`Brightness/Alpha/Modulate`，alpha 峰值 1.025 在 GPU 混色输出处饱和 1 → Modulate 显式 clamp 保证字节级确定性）。`LightRender` 增 `CRYSTAL_TIME=<秒>`：每灯 tint 经 `LightPulse.Modulate` 调制（GPU 绘制色与 CPU 期望同走公式），未设保持 R5 静态行为。
+- **验证**：`Build/lightpulseverify.ps1` 三确定性时刻全 PASS——t=0（sin0：b=a=0.975 基线衰减）、t=π/18（sin1：b=1,a=clamp1.025=1 峰值）、t=π/6（sin−1：b=0.95,a=0.925 谷底），`[lightpulseverify] PASS`；R5 静态模式回归 fail=0。
+- **AmbientLightBlend 对照决策**：sanduan 是**静态光照贴图覆盖**（opaque 双纹理，overlay.a>0 → 整像素替换 base），无每灯 tint/无脉冲，是烘焙贴图捷径。R5 动态多通道（additive 光源 + multiply 环境调暗）语义超集且已字节级验证 + 现补脉冲 → **维持 R5 方案，不引入 AmbientLightBlend**。
+- **注**：运行时 `GameScene.DrawLights` 尚未接线（R5 为探针级能力），LightPulse 供其接线时调用。
 
 ---
 
@@ -118,7 +126,7 @@
 |---|---|---|---|---|
 | P0 | 移植 SpellObject + ItemObject（补全对象模型） | A1/A2 | 1~2d | ✅ 2026-08-08（CoreVerify 0 错误 + ObjectModelVerify 24/24） |
 | P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ✅ 2026-08-08（CrystalSpriteOutline + DrawOutline 光环，outlineverify 3/3 PASS） |
-| P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ⬜ |
+| P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ✅ 2026-08-08（LightPulse 脉冲补 R5，lightpulseverify 3 时刻 PASS；AmbientLightBlend 维持 R5 方案） |
 | P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ⬜ |
 | P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ⬜ |
 | P3 | MirMath seam 边缘对照（ColorTranslator/SystemInformation） | D1 | 随用随查 | ⬜ |
