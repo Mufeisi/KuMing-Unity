@@ -128,7 +128,8 @@ namespace Client.MirScenes
         {
             p.Item.Stock = p.StockLevel;
             GameShopInfoList.Add(p.Item);
-            if (p.Item.Date > CMain.Now.AddDays(-7)) GameShopDialog.New.Visible = true;
+            // 进图前（InitInGameDialogs 未建对话框）不触碰 New 按钮（8-7-4 null 守卫）。
+            if (p.Item.Date > CMain.Now.AddDays(-7) && GameShopDialog != null) GameShopDialog.New.Visible = true;
         }
 
         public void GameShopStock(S.GameShopStock p)
@@ -140,7 +141,8 @@ namespace Client.MirScenes
                     if (p.StockLevel == 0) GameShopInfoList.Remove(GameShopInfoList[i]);
                     else GameShopInfoList[i].Stock = p.StockLevel;
 
-                    if (GameShopDialog.Visible) GameShopDialog.UpdateShop();
+                    // 进图前（InitInGameDialogs 未建对话框）仅落静态列表（8-7-4 null 守卫）。
+                    if (GameShopDialog != null && GameShopDialog.Visible) GameShopDialog.UpdateShop();
                 }
             }
         }

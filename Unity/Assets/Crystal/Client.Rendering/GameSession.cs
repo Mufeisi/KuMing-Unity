@@ -156,6 +156,9 @@ namespace Crystal.Client.Rendering
                     var sg = (S.StartGame)p;
                     if (sg.Result == 4)
                     {
+                        // 新会话清空商城商品（8-7-4）：GameShopDialog ctor 不再 Clear（见该处注释），
+                        // 清空职责在此——服务器随后在 StartGame 响应中逐个推 S.GameShopInfo 重新填充。
+                        GameScene.GameShopInfoList.Clear();
                         State = GameSessionState.InGame;
                         OnEnterGame?.Invoke();
                     }
@@ -368,6 +371,12 @@ namespace Crystal.Client.Rendering
                     break;
                 case (short)ServerPacketIds.MarketSuccess:
                     MarketSuccess((S.MarketSuccess)p);
+                    break;
+                case (short)ServerPacketIds.GameShopInfo:
+                    GameShopInfo((S.GameShopInfo)p);
+                    break;
+                case (short)ServerPacketIds.GameShopStock:
+                    GameShopStock((S.GameShopStock)p);
                     break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
@@ -1115,6 +1124,21 @@ namespace Crystal.Client.Rendering
             MirMessageBox.Show(p.Message);
         }
 
+        // ── 商城（8-7-4）──
+
+        // S.GameShopInfo：商品推送（服务器 GetInfo 顺序 MapInfo→UserInfo→GameShop，对话框
+        // InitInGameDialogs 已建）。进图前 scene 为空时静默丢弃（服务器顺序保证不会）。
+        internal static void GameShopInfo(S.GameShopInfo p)
+        {
+            GameScene.Scene?.GameShopUpdate(p);
+        }
+
+        // S.GameShopStock：库存回执（购买后服务器推，减库存/售罄移除 + 面板开着刷新）。
+        internal static void GameShopStock(S.GameShopStock p)
+        {
+            GameScene.Scene?.GameShopStock(p);
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1400,6 +1424,12 @@ namespace Crystal.Client.Rendering
                 // MarketFail/MarketSuccess 分发刷新面板；BuyButton Auction 分支弹 MirAmountBox 出价。
                 var market = new TrustMerchantDialog { Parent = scene, Visible = false };
                 scene.TrustMerchantDialog = market;
+                // 商城对话框（8-7-4）：常驻创建默认隐藏（同 NPCDialog 模式）。商品在 S.MapInformation
+                // 之后由服务器逐个推 S.GameShopInfo（GetInfo 顺序 MapInfo→UserInfo→GameShop），对话框
+                // 已建 → GameScene.GameShopUpdate/GameShopStock 直接刷新（ctor 不再 Clear，见该处
+                // 注释；会话清空在 S.StartGame(Result=4) 分支）。分类/分页/搜索/支付勾选均本地过滤。
+                var gameShop = new GameShopDialog { Parent = scene, Visible = false };
+                scene.GameShopDialog = gameShop;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

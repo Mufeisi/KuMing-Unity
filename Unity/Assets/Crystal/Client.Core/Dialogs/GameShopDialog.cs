@@ -39,7 +39,9 @@ namespace Client.MirScenes.Dialogs
 
         public GameShopDialog()
         {
-            GameScene.GameShopInfoList.Clear();
+            // 商品列表清理移到 GameSession S.StartGame(Result=4) 分支（8-7-4）：服务器在 StartGame
+            // 响应时推 S.GameShopInfo（客户端进图前到达），本对话框 InitInGameDialogs 进图时才常驻
+            // 创建——ctor 若 Clear 会把已推送的商品清空（旧客户端对话框登录后即建，无此时序问题）。
             Index = 749;
             Library = Libraries.Title;
             Movable = true;
