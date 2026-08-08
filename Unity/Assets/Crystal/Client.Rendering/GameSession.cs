@@ -220,6 +220,9 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.ObjectDied:
                     ObjectDied((S.ObjectDied)p);
                     break;
+                case (short)ServerPacketIds.NPCResponse:
+                    NpcResponse((S.NPCResponse)p);
+                    break;
                 case (short)ServerPacketIds.EquipItem:
                     EquipItem((S.EquipItem)p);
                     break;
@@ -264,6 +267,20 @@ namespace Crystal.Client.Rendering
 
             npo = new NPCObject(p.ObjectID);
             npo.Load(p);
+        }
+
+        // NPC 对话回流（8-3-1）：S.NPCResponse 对话页 → NPCDialog.NewText 渲染选项 + Show。
+        // NPCDialog 由 InitInGameDialogs 常驻创建（Visible=false，防 MapObject.cs NPC 移除 NRE +
+        // UiHitTest 污染）；此处兜底懒建。internal：NpcVerify 探针直调测全链。
+        internal static void NpcResponse(S.NPCResponse p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            if (scene.NPCDialog == null)
+                scene.NPCDialog = new NPCDialog { Parent = scene, Visible = false };
+            scene.NPCDialog.NewText(p.Page);
+            if (scene.InventoryDialog != null) scene.NPCDialog.Show();
+            else scene.NPCDialog.Visible = true;
         }
 
         internal static void ObjectSpell(S.ObjectSpell p)
@@ -470,6 +487,10 @@ namespace Crystal.Client.Rendering
                 scene.MainDialog = main;
                 var inv = new InventoryDialog { Parent = scene };
                 scene.InventoryDialog = inv;
+                // NPC 对话框（8-3-1）：常驻创建默认隐藏。不设为 Visible=false 会污染 UiHitTest
+                // （MirControl.Visible 默认 true），且 MapObject.cs NPC 移除会直接 Hide 它（NRE 兜底）。
+                var npc = new NPCDialog { Parent = scene, Visible = false };
+                scene.NPCDialog = npc;
             }
             catch (Exception ex)
             {

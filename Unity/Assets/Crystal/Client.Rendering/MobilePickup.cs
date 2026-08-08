@@ -130,7 +130,8 @@ namespace Crystal.Client.Rendering
         }
 
         // 屏（ui 空间）→ 格：ItemObject.Process 世界→屏幕逆变换（忽略格内居中/偏移，TapRadius 内足够）。
-        static MPoint ScreenToTile(MapControl mc, MPoint ui)
+        // internal：MobileNpc（NPC 点击）同源复用，DRY。
+        internal static MPoint ScreenToTile(MapControl mc, MPoint ui)
         {
             var user = MapObject.User;
             return new MPoint(

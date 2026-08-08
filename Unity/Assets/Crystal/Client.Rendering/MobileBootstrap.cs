@@ -38,6 +38,7 @@ namespace Crystal.Client.Rendering
         readonly TouchJoystick _joystick = new TouchJoystick();
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
         readonly MobilePickup _pickup = new MobilePickup(); // 地面拾取（增量5）：地图 tap 设目标→走位→C.PickUp
+        readonly MobileNpc _npc = new MobileNpc();           // NPC 对话（增量6）：地图 tap 命中 NPC→C.CallNPC 拉对话
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
         readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
@@ -90,6 +91,9 @@ namespace Crystal.Client.Rendering
                 var scene = GameScene.Scene;
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
+                // NPC 对话框（增量6）：顶层先关（NPC 对话可与背包并存，Back 优先关对话）。
+                var npc = scene != null ? scene.NPCDialog : null;
+                if (npc != null && npc.Visible) { npc.Hide(); return true; }
                 var inv = scene != null ? scene.InventoryDialog : null;
                 if (inv != null && inv.Visible) { inv.Hide(); return true; }
                 return false;
@@ -149,10 +153,10 @@ namespace Crystal.Client.Rendering
             }
             PollJoystick();
             GameRuntime.TickLogic();
-            // 手动摇杆优先：拖动时暂停自动战斗；背包/装备面板打开期间同样暂停（面板操作不被打断）。
+            // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true));
             if (!_joystick.Active && !uiOpen)
             {
                 if (_pickup.Active) _pickup.Tick();
@@ -287,7 +291,8 @@ namespace Crystal.Client.Rendering
             var scene = GameScene.Scene;
             var inv = scene != null ? scene.InventoryDialog : null;
             var chr = scene != null ? scene.CharacterDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var npcDlg = scene != null ? scene.NPCDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -311,16 +316,19 @@ namespace Crystal.Client.Rendering
                     UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui), // 背包/装备按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
-                    // 摇杆（raw 空间）→ 拾取 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
-                    // Up 且无拖拽位移（ReleasedWithIntent false）且非 HUD 按钮区 → 地图 tap → 设拾取目标。
-                    // TapAt 返回 false（无物品/距离外）即目标保持清空，不发包。
+                    // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
+                    // Up 且无拖拽位移（ReleasedWithIntent false）且非 HUD 按钮区 → 地图 tap →
+                    // NPC 优先（命中即消费），未命中落回拾取。TapAt 返回 false（无物品/距离外）即目标保持清空，不发包。
                     Joystick = (id, ph, rawPos) =>
                     {
                         _joystick.OnTouch(id, ph, rawPos);
                         var ui = MobileUiAdapter.ToUiPoint(rawPos);
                         if (ph == JoystickPhase.Down) { _pickup.Cancel(); return; }
                         if (ph == JoystickPhase.Up && !_joystick.ReleasedWithIntent && !_hud.Hit(MobileUiAdapter.ToUi(rawPos)))
-                            _pickup.TapAt(scene != null ? scene.MapControl : null, ui);
+                        {
+                            var mc = scene != null ? scene.MapControl : null;
+                            if (!_npc.TapAt(mc, ui)) _pickup.TapAt(mc, ui);
+                        }
                     },
                     Hud = (id, ph, ui) => _hud.OnTouch(id, ph, ui),                      // HUD（ui 空间）
                 }, t.fingerId, phase, raw);

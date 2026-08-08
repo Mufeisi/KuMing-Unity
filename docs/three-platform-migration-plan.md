@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第3项 增量1——NPC 对话触控化（点 NPC → 对话树选项可点/翻页/关闭）。见任务 `8-3-1`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅，8-2-5 拾取见下节）。
+**当前在途**：阶段8 第3项 增量2——商店买卖触控化（商店 8 格列表买卖/数量/购买按钮）。见任务 `8-3-2`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 增量1 NPC 对话已收口（8-3-1 ✅）。
 
 ---
 
@@ -100,7 +100,7 @@
 | 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | ✅ | 8-2-2 | 1d |
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | ✅ | 8-2-2 | 0.5d |
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | ✅ | 8-2-2 | 1d |
-| 8-3-1 | NPC 对话树触控化 | 8·第3项 | 🔲 | 8-2-2 | 1d |
+| 8-3-1 | NPC 对话树触控化 | 8·第3项 | ✅ | 8-2-2 | 1d |
 | 8-3-2 | 商店买卖触控化 | 8·第3项 | 🔲 | 8-3-1 | 1d |
 | 8-3-3 | 仓库存取触控化 | 8·第3项 | 🔲 | 8-3-1 | 0.5~1d |
 | 8-4-1 | 任务四窗触控化 | 8·第4项 | 🔲 | 8-3-1 | 1d |
@@ -248,12 +248,13 @@
 - 验收：真机走到掉落物旁点击拾取，背包物品+1。
 
 #### 8-3-1 NPC 对话树触控化
-状态：🔲｜预估：1d｜依赖：8-2-2
+状态：✅（2026-08-08，npcverify 6/6）｜预估：1d｜依赖：8-2-2
 
 - 目标：点 NPC → 对话树选项可点、翻页、关闭。
-- 开发：NPC 点击选中（同拾取的对象选择）；`NPCDialog` 选项按钮触控（走 8-0）；翻页/滚动；复用 PC 迭代包3 控制树。
-- 测试：探针（对话翻页/选项点击/关闭）。
-- 验证：探针 PASS + PC 回归 `net-npc.ps1` + 冒烟。
+- 落地：`MobileNpc` 纯逻辑控制器（仿 MobilePickup）——地图 tap 屏转格 → 最近 NPCObject（≤TapRadius=1）命中 → 置 `GameScene.NPCID` + 发 `C.CallNPC{ObjectID, Key="[@Main]"}`；无 NPC/对话框已开拒绝（落回拾取）。`GameSession.NpcResponse`（S.NPCResponse 分支）→ `NPCDialog.NewText` 渲染选项 + Show；选项点击走 TouchInputAdapter → GameScene.OnMouseClick → `NPCDialog.ButtonClicked` → `C.CallNPC[动作]`（复用 PC 控制树，节流走 `GameScene.NPCTime`）；`@Exit` 关闭。对话框在 InitInGameDialogs 预建（Visible=false，防 MapObject NPC 移除 NRE）。
+- 测试：`NpcVerify` 探针 6 用例（命中发包+NPCID / 无 NPC 拒绝 / 超半径拒绝 / 独立节流 5000ms / 对话框已开不重弹 / NPCResponse 渲染+选项点击发包+选项节流+@Exit 关闭）。
+- 验证：npcverify 6/6 PASS + 全移动回归（pickup/baginteract/equip/useitem/mobileui/mobilehud）PASS + PC 真服 `net-npc` PASS + gamesessionverify PASS。
+- 对照决策：点击节流用**独立** 5000ms（`MobileNpc._lastCallAt`），不共享 `GameScene.NPCTime`——旧客户端共享计时会在开框后吞掉首个选项点击（quirk），触控版让选项即点即响。
 - 提交：`feat(阶段8): NPC 对话触控化`。
 - 验收：真机点 NPC 对话完整流程。
 
