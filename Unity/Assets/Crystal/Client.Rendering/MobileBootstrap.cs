@@ -42,6 +42,7 @@ namespace Crystal.Client.Rendering
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
         readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
+        readonly MobileBag _quest = new MobileBag(1280, 720);  // 任务按钮（8-4-1）：装备下方开/关任务日记（蓝 tint）
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex;      // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
@@ -84,6 +85,11 @@ namespace Crystal.Client.Rendering
             _equip.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + MobileBag.ButtonH + 8f));
             _equip.TintOpen = new Color(0.45f, 1f, 0.5f, 0.95f);
             _equip.TintClosed = new Color(0.3f, 0.7f, 0.3f, 0.95f);
+            // 任务按钮（8-4-1）：装备按钮正下方，蓝 tint 与背包黄/装备绿区分；开/关任务日记面板。
+            _quest.OnToggle = ToggleQuest;
+            _quest.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 2));
+            _quest.TintOpen = new Color(0.5f, 0.7f, 1f, 0.95f);
+            _quest.TintClosed = new Color(0.3f, 0.45f, 0.8f, 0.95f);
             // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
             // Hide()（增量2）顺带清选中+Tooltip；装备窗口（增量3）优先关（顶层先关）。
             MobileUiAdapter.BackHandler = () =>
@@ -97,6 +103,15 @@ namespace Crystal.Client.Rendering
                 // NPC 商店（8-3-2）：叠在对话+背包上，Back 优先关商店（顶层先关）。
                 var goods = scene != null ? scene.NPCGoodsDialog : null;
                 if (goods != null && goods.Visible) { goods.Hide(); return true; }
+                // 任务详情（8-4-1）：点日记/列表行打开，Back 优先关（顶层先关）。
+                var qdet = scene != null ? scene.QuestDetailDialog : null;
+                if (qdet != null && qdet.Visible) { qdet.Hide(); return true; }
+                // 任务日记（8-4-1）：移动端任务按钮打开，Back 关闭。
+                var qdia = scene != null ? scene.QuestDiaryDialog : null;
+                if (qdia != null && qdia.Visible) { qdia.Hide(); return true; }
+                // 任务列表（8-4-1）：随 NPC 对话连带打开，Back 优先关（Hide 连带关 NPC 对话，须在 npc 前）。
+                var qlist = scene != null ? scene.QuestListDialog : null;
+                if (qlist != null && qlist.Visible) { qlist.Hide(); return true; }
                 // NPC 对话框（增量6）：顶层先关（NPC 对话可与背包并存，Back 优先关对话）。
                 var npc = scene != null ? scene.NPCDialog : null;
                 if (npc != null && npc.Visible) { npc.Hide(); return true; }
@@ -162,7 +177,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true));
             if (!_joystick.Active && !uiOpen)
             {
                 if (_pickup.Active) _pickup.Tick();
@@ -198,11 +213,19 @@ namespace Crystal.Client.Rendering
                 _hud.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_bag.ScreenW != GameRuntime.ScreenW || _bag.ScreenH != GameRuntime.ScreenH)
                 _bag.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_equip.ScreenW != GameRuntime.ScreenW || _equip.ScreenH != GameRuntime.ScreenH)
+                _equip.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_quest.ScreenW != GameRuntime.ScreenW || _quest.ScreenH != GameRuntime.ScreenH)
+                _quest.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
             var inv = scene != null ? scene.InventoryDialog : null;
             var chr = scene != null ? scene.CharacterDialog : null;
+            var qdia = scene != null ? scene.QuestDiaryDialog : null;
+            var qlist = scene != null ? scene.QuestListDialog : null;
+            var qdet = scene != null ? scene.QuestDetailDialog : null;
+            var qtrk = scene != null ? scene.QuestTrackingDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -219,14 +242,24 @@ namespace Crystal.Client.Rendering
             {
                 UiText.WarmTree(chr); // 装备窗口无 Process（BeforeDraw 刷标签），仅预热字形
             }
+            // 任务四窗（8-4-1）：面板开才预热字形（日记/列表/详情含 MirLabel 文本，批前须合帧）。
+            if (qdia != null && qdia.Visible) UiText.WarmTree(qdia);
+            if (qlist != null && qlist.Visible) UiText.WarmTree(qlist);
+            if (qdet != null && qdet.Visible) UiText.WarmTree(qdet);
+            if (qtrk != null && qtrk.Visible) UiText.WarmTree(qtrk);
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
             if (main != null) main.Draw();
             if (inv != null && inv.Visible) inv.Draw();
             if (chr != null && chr.Visible) chr.Draw();
+            if (qdia != null && qdia.Visible) qdia.Draw();
+            if (qlist != null && qlist.Visible) qlist.Draw();
+            if (qdet != null && qdet.Visible) qdet.Draw();
+            if (qtrk != null && qtrk.Visible) qtrk.Draw();
             _bag.Render(_bagTex);
             _equip.Render(_bagTex);
+            _quest.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -300,7 +333,10 @@ namespace Crystal.Client.Rendering
             var npcDlg = scene != null ? scene.NPCDialog : null;
             var goodsDlg = scene != null ? scene.NPCGoodsDialog : null;
             var storeDlg = scene != null ? scene.StorageDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var qdia = scene != null ? scene.QuestDiaryDialog : null;
+            var qlist = scene != null ? scene.QuestListDialog : null;
+            var qdet = scene != null ? scene.QuestDetailDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -321,7 +357,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui), // 背包/装备按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui), // 背包/装备/任务按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -440,6 +476,37 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] char-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] char-{(open ? "open" : "close")} visible={chr.Visible}");
+        }
+
+        // 任务日记开/关（8-4-1）：切换 QuestDiaryDialog.Visible。打开走 Show→DisplayQuests
+        // （按 GameScene.User.CurrentQuests 分组重建）+ Cancel 摇杆/HUD/拾取（同背包）；关闭同 Hide。
+        // 日志 [mobile] quest-open/close 供 E2E 数据断言。
+        void ToggleQuest(bool open)
+        {
+            var qdia = GameScene.Scene != null ? GameScene.Scene.QuestDiaryDialog : null;
+            if (qdia == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!qdia.Visible)
+                    {
+                        qdia.Show();
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                    }
+                }
+                else
+                {
+                    qdia.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] quest-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] quest-{(open ? "open" : "close")} visible={qdia.Visible}");
         }
 
         // 位置心跳：进图后节流打印实际坐标（androidverify 解析出生点 → 按实际坐标重裁区域 → 二次 push 重启）。

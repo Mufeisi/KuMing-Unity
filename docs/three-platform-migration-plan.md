@@ -54,7 +54,7 @@
 | 5 | PC UI 功能面 | ✅ | G5 有条件 | 迭代包 1-10（全部对话框控制树）+ 文本管线 |
 | 6 | PC Player + 边缘补验 | ✅ | — | C1-C5 运行时 + 真实屏幕渲染；11/11 边缘补验；**C4 决策与 G6 见阶段9** |
 | 7 | 移动骨架 | ✅ | G7 部分 | Android Host/生命周期/触控适配/资源同步/设备分级 + iOS 配置；**G7 判定拆到阶段8/10** |
-| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 ✅ → 第3项 ✅ → 第4项 待启动 |
+| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 ✅ → 第3项 ✅ → 第4项 ✅ → 第5项 待启动 |
 | 9 | PC 收尾与发布 | 🔲 | G6 | 原阶段6 剩余：UI 决策/安装补丁/长稳/性能/灰度 |
 | 10 | iOS 落地 | 🔲 | G7 iOS | 阻塞：macOS + Xcode + 证书 |
 
@@ -72,7 +72,7 @@
 - **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第4项 增量1——任务四窗触控化（任务列表/日记/详情/追踪）。见任务 `8-4-1`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
+**当前在途**：阶段8 第4项 全收口——任务四窗触控化完成（8-4-1 ✅）。下一增量 8-4-2 大地图触控化。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -103,7 +103,7 @@
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | ✅ | 8-2-2 | 1d |
 | 8-3-2 | 商店买卖触控化 | 8·第3项 | ✅ | 8-3-1 | 1d |
 | 8-3-3 | 仓库存取触控化 | 8·第3项 | ✅ | 8-3-1 | 0.5~1d |
-| 8-4-1 | 任务四窗触控化 | 8·第4项 | 🔲 | 8-3-1 | 1d |
+| 8-4-1 | 任务四窗触控化 | 8·第4项 | ✅ | 8-3-1 | 1d |
 | 8-4-2 | 大地图触控化 | 8·第4项 | 🔲 | 8-4-1 | 0.5~1d |
 | 8-4-3 | 小地图触控化 | 8·第4项 | 🔲 | 8-4-1 | 0.5~1d |
 | 8-5-1 | 软键盘桥接 + 安全区适配（基础） | 8·第5项 | 🔲（桥已就绪：`SoftKeyboardBridge`，sanduan P2 提取交付，安全区待做） | 8-0 | 1d |
@@ -294,14 +294,23 @@
 - 验收：真机存取物品成功。
 
 #### 8-4-1 任务四窗触控化
-状态：🔲｜预估：1d｜依赖：8-3-1
+状态：✅（2026-08-08，questverify 9/9）｜预估：1d｜依赖：8-3-1
 
-- 目标：任务列表/日记/详情/追踪 触控可操作。
-- 开发：QuestDialogs 触控（列表行/详情/追踪开关）；复用 PC 迭代包5。
-- 测试：探针（四窗触控/追踪切换）。
-- 验证：探针 PASS + PC 回归 `net-quest.ps1` + 冒烟。
+- 目标：任务列表/日记/详情/追踪 四窗触控可操作。
+- 落地：
+  - `GameSession`：补 `S.NewQuestInfo` 派发（填 `GameScene.QuestInfoList`，NPCObject.Load 按 `NPCIndex` 关联）；`S.ChangeQuest` 派发（Add/Update/Remove → 双 `User` 引用同步 `CurrentQuests`（`GameScene.User` + `MapObject.User`，供日记/追踪各自读取）；`TrackQuest` → `QuestTrackingDialog.AddQuest`；Remove → 摘追踪，避免追踪 ID 残留 `Settings.TrackedQuests`）；`CompleteQuest` → 移除（对齐旧客户端 ChangeQuest Remove 语义）；`ShareQuest` 空体（不移植）。
+  - `NpcResponse` 门控：`MapControl.GetObject(GameScene.NPCID) is NPCObject npc && npc.Quests.Count > 0` 才连带弹 `QuestListDialog`（无任务 NPC 只保留对话，列表不弹）。
+  - `InitInGameDialogs` 常驻创建四窗（`NPCDialog` 之后，顺序契约：QuestTracking → QuestDiary → QuestList → QuestDetail；QuestListDialog ctor 读 `NPCDialog.Size.Width` 定 Location）；`MobileBootstrap` quest 入口按钮 + 四窗守卫（面板开时暂停摇杆/战斗/拾取，BackHandler 逐层关闭）。
+  - `QuestSingleQuestItem` 触控接线：原 `e as MouseEventArgs` cast（Unity Click 为 `EventHandler`，恒 null）致交互全死 → 点行=左键（开详情 + 选中），追踪切换拆到独立 `_trackButton`（原右键行为）。
+- 测试：`QuestVerify` 探针 9 用例（NewQuestInfo 落库+NPC 关联 / NpcResponse 门控弹列表+对话保留 / 无任务不弹 / ChangeQuest Add 双引用+TrackQuest+Settings 落盘 / Add 无追踪只入册 / Update/Remove 双引用+Remove 摘追踪 / 日记分组+点行开详情+行选中态 / 追踪按钮 toggle（开+关）+Settings 更新 / 追踪 5 条上限第 6 条不生效）。
+- 验证：questverify 9/9 PASS + 相关回归（npcverify 6/6、shopverify 9/9、storageverify 9/9、bagverify/baginteract/equip/useitem/pickup/gamesessionverify）PASS。
+- 对照决策：
+  - **双引用同步**：任务被 `GameScene.User`（日记）与 `MapObject.User`（追踪）分别读取，ChangeQuest 必须同步写两处，否则单窗可见性漂移。
+  - **Remove 摘追踪**：`ChangeQuest Remove` 时若任务在追踪列表，`RemoveQuest` 同步清 `Settings.TrackedQuests` 槽位（旧客户端 ChangeQuest 同语义，否则 ID 残留致下次进图幽灵追踪）。
+  - **触控分离点行与追踪钮**：原右键开追踪不适用于触控，拆独立按钮（Index 917/918 切换）；探针夹具强制显式尺寸复现真机命中区（batchmode 空库 AutoSize→`GetTrueSize` 0×0、状态文本测量撑宽盖住按钮）。
+  - `QuestMessage` 滚轮不移植（`ScrollUpButton`/`ScrollDownButton` 已有）。
 - 提交：`feat(阶段8): 任务四窗触控化`。
-- 验收：真机打开任务追踪。
+- 验收：真机打开任务追踪、追踪切换生效。
 
 #### 8-4-2 大地图触控化
 状态：🔲｜预估：0.5~1d｜依赖：8-4-1

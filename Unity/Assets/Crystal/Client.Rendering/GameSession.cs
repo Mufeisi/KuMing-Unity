@@ -252,6 +252,18 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.NPCStorage:
                     NpcStorage();
                     break;
+                case (short)ServerPacketIds.NewQuestInfo:
+                    NewQuestInfo((S.NewQuestInfo)p);
+                    break;
+                case (short)ServerPacketIds.ChangeQuest:
+                    ChangeQuest((S.ChangeQuest)p);
+                    break;
+                case (short)ServerPacketIds.CompleteQuest:
+                    CompleteQuest((S.CompleteQuest)p);
+                    break;
+                case (short)ServerPacketIds.ShareQuest:
+                    ShareQuest((S.ShareQuest)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -301,6 +313,14 @@ namespace Crystal.Client.Rendering
             scene.NPCDialog.NewText(p.Page);
             if (scene.InventoryDialog != null) scene.NPCDialog.Show();
             else scene.NPCDialog.Visible = true;
+
+            // 任务列表（8-4-1）：当前 NPC 有可接任务 → 连带打开任务列表（对齐旧客户端点 NPC 弹列表）。
+            // 无任务不弹：QuestListDialog.Show→DisplayInfo→GetAvailableQuests 失败会 Hide()（连带关
+            // NPC 对话），此处先查 NPCObject.Quests 门控，避免无任务 NPC 把对话关掉。
+            if (scene.QuestListDialog == null)
+                scene.QuestListDialog = new QuestListDialog { Parent = scene, Visible = false };
+            if (MapControl.GetObject(GameScene.NPCID) is NPCObject npc && npc.Quests != null && npc.Quests.Count > 0)
+                scene.QuestListDialog.Show();
         }
 
         // 商店商品回流（8-3-2）：S.NPCGoods 商品列表 + 价格倍率 → NPCGoodsDialog.NewGoods 渲染 + Show
@@ -414,6 +434,74 @@ namespace Crystal.Client.Rendering
                 }
             }
         }
+
+        // ===== 任务（8-4-1）=====
+        // S.NewQuestInfo：任务模板全量 → QuestInfoList（NPCObject.Load 按 NPCIndex==ObjectID 关联可接任务）。
+        internal static void NewQuestInfo(S.NewQuestInfo p)
+        {
+            if (p?.Info == null) return;
+            GameScene.QuestInfoList.Add(p.Info);
+        }
+
+        // S.ChangeQuest：任务进度增/改/删。CurrentQuests 双引用同步——QuestDiaryDialog.DisplayQuests 读
+        // GameScene.User、QuestTrackingDialog.DisplayQuests 读 MapObject.User，须两处都维护。TrackQuest
+        // → 追踪栏（TrackedQuestsIds 单一事实源，AddQuest 内自驱 Show + 写 Settings）。打开中的任务窗就地刷新。
+        internal static void ChangeQuest(S.ChangeQuest p)
+        {
+            var q = p.Quest;
+            if (q == null) return;
+            var users = new List<UserObject>();
+            if (GameScene.User != null) users.Add(GameScene.User);
+            if (MapObject.User != null && !users.Contains(MapObject.User)) users.Add(MapObject.User);
+            foreach (var user in users)
+            {
+                int idx = user.CurrentQuests.FindIndex(x => x.Id == q.Id);
+                switch (p.QuestState)
+                {
+                    case QuestState.Add:
+                        if (idx < 0) user.CurrentQuests.Add(q);
+                        break;
+                    case QuestState.Update:
+                        if (idx >= 0) user.CurrentQuests[idx] = q;
+                        else user.CurrentQuests.Add(q);
+                        break;
+                    case QuestState.Remove:
+                        if (idx >= 0) user.CurrentQuests.RemoveAt(idx);
+                        break;
+                }
+            }
+
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+
+            var tracking = scene.QuestTrackingDialog;
+            if (p.QuestState == QuestState.Remove && tracking != null && tracking.TrackedQuestsIds.Contains(q.Id))
+                tracking.RemoveQuest(q); // 废弃任务同步摘追踪（对齐旧客户端 ChangeQuest），否则追踪 ID 残留 Settings
+            if (p.TrackQuest && tracking != null && !tracking.TrackedQuestsIds.Contains(q.Id))
+                tracking.AddQuest(q);
+            if (tracking != null && MapObject.User != null && tracking.TrackedQuestsIds.Count > 0)
+                tracking.DisplayQuests();
+            if (scene.QuestDiaryDialog != null && scene.QuestDiaryDialog.Visible)
+                scene.QuestDiaryDialog.DisplayQuests();
+        }
+
+        // S.CompleteQuest：已完成任务 Id 列表 → 双引用移除 + 打开中的日记刷新。
+        internal static void CompleteQuest(S.CompleteQuest p)
+        {
+            if (p.CompletedQuests == null) return;
+            var users = new List<UserObject>();
+            if (GameScene.User != null) users.Add(GameScene.User);
+            if (MapObject.User != null && !users.Contains(MapObject.User)) users.Add(MapObject.User);
+            foreach (var user in users)
+                user.CurrentQuests.RemoveAll(x => p.CompletedQuests.Contains(x.Id));
+
+            var scene = GameScene.Scene;
+            if (scene != null && scene.QuestDiaryDialog != null && scene.QuestDiaryDialog.Visible)
+                scene.QuestDiaryDialog.DisplayQuests();
+        }
+
+        // S.ShareQuest：组队分享任务提示（旧客户端经 ChatDialog 广播，未移植）→ 空体保留契约。
+        internal static void ShareQuest(S.ShareQuest p) { }
 
         internal static void ObjectSpell(S.ObjectSpell p)
         {
@@ -631,6 +719,17 @@ namespace Crystal.Client.Rendering
                 // S.UserStorage/S.NPCStorage 派发 Show；Runtime 图集 Prguse 已就位，StorageDialog 尺寸正常。
                 var storage = new StorageDialog { Parent = scene, Visible = false };
                 scene.StorageDialog = storage;
+                // 任务四窗（8-4-1）：常驻创建默认隐藏（同 NPCDialog 模式）。顺序契约：QuestListDialog
+                // ctor 读 NPCDialog.Size（上方已建）；QuestSingleQuestItem 读 QuestTrackingDialog（先建）。
+                // 追踪栏由 Add/RemoveQuest→DisplayQuests 自驱显隐（有追踪项才 Show）。
+                var qTracking = new QuestTrackingDialog { Parent = scene, Visible = false };
+                scene.QuestTrackingDialog = qTracking;
+                var qDiary = new QuestDiaryDialog { Parent = scene, Visible = false };
+                scene.QuestDiaryDialog = qDiary;
+                var qList = new QuestListDialog { Parent = scene, Visible = false };
+                scene.QuestListDialog = qList;
+                var qDetail = new QuestDetailDialog { Parent = scene, Visible = false };
+                scene.QuestDetailDialog = qDetail;
             }
             catch (Exception ex)
             {

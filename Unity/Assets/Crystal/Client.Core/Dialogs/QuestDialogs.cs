@@ -19,8 +19,8 @@ namespace Client.MirScenes.Dialogs
     // / QuestGroupQuestItem + QuestSingleQuestItem 日志分组行。
     // 裁剪：MirMessageBox（未移植弹窗基类，接受/取消确认改直发包）；NPCDialog 链接静态
     // （MonsterLink/NPCLink/ItemLink 富文本链接，未移植）；Color.FromName 统一黄（NPCDialog 先例）；
-    // SystemInformation.MouseWheelScrollDelta 固定 120；QuestSingleQuestItem Click 的
-    // `e as MouseEventArgs` cast（Unity Click 为 EventHandler，恒 null → 交互裁剪，渲染保留）。
+    // SystemInformation.MouseWheelScrollDelta 固定 120；QuestSingleQuestItem 触控化（8-4-1）：
+    // 原 `e as MouseEventArgs` cast（Unity Click 为 EventHandler，恒 null）→ 点行开详情 + _trackButton 追踪开关。
     public sealed class QuestListDialog : MirImageControl
     {
         private readonly MirButton _acceptButton, _finishButton;
@@ -1820,6 +1820,7 @@ namespace Client.MirScenes.Dialogs
     {
         private MirLabel _questLabel, _stateLabel;
         private readonly MirImageControl _selectedImage;
+        private readonly MirButton _trackButton;
 
         public ClientQuestProgress Quest;
 
@@ -1870,36 +1871,36 @@ namespace Client.MirScenes.Dialogs
 
             _questLabel.Click += (o, e) =>
             {
-                // Unity MirControl.Click 为 EventHandler（EventArgs），`e as MouseEventArgs` 恒 null，
-                // 交互裁剪（详情/追踪切换），渲染保留。
-                MouseEventArgs me = e as MouseEventArgs;
+                // 8-4-1：原 `e as MouseEventArgs` cast（Unity Click 为 EventHandler，恒 null）致交互全死。
+                // 触控语义：点行=左键（开详情+选中）；追踪切换拆到独立 _trackButton（原右键行为）。
+                GameScene.Scene.QuestDetailDialog.DisplayQuestDetails(Quest);
+                OnSelectedQuestChanged();
+            };
 
-                if (me == null) return;
-
-                switch (me.Button)
+            _trackButton = new MirButton
+            {
+                Index = TrackQuest ? 917 : 918,
+                Library = Libraries.Prguse,
+                Parent = this,
+                Size = new Size(16, 14),
+                Location = new Point(236, 0),
+                Sound = SoundList.ButtonA
+            };
+            _trackButton.Click += (o, e) =>
+            {
+                if (TrackQuest)
                 {
-                    case MouseButtons.Left:
-                        GameScene.Scene.QuestDetailDialog.DisplayQuestDetails(Quest);
-                        break;
-                    case MouseButtons.Right:
-                        {
-                            if (TrackQuest)
-                            {
-                                GameScene.Scene.QuestTrackingDialog.RemoveQuest(Quest);
-                            }
-                            else
-                            {
-                                if (GameScene.Scene.QuestTrackingDialog.TrackedQuestsIds.Count >= 5) return;
+                    GameScene.Scene.QuestTrackingDialog.RemoveQuest(Quest);
+                }
+                else
+                {
+                    if (GameScene.Scene.QuestTrackingDialog.TrackedQuestsIds.Count >= 5) return;
 
-                                GameScene.Scene.QuestTrackingDialog.AddQuest(Quest);
-                            }
-
-                            TrackQuest = !TrackQuest;
-                        }
-                        break;
+                    GameScene.Scene.QuestTrackingDialog.AddQuest(Quest);
                 }
 
-                OnSelectedQuestChanged();
+                TrackQuest = !TrackQuest;
+                _trackButton.Index = TrackQuest ? 917 : 918;
             };
 
             _stateLabel = new MirLabel
