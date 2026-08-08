@@ -212,7 +212,7 @@ namespace Client.MirObjects
             MountTime = CMain.Time;
 
             if (MountType < 0)
-                GameScene.Scene.MountDialog.Hide();
+                GameScene.Scene.MountDialog?.Hide(); // 8-8-2 null 守卫（对象加载早于 MountDialog 常驻时）
 
             SetLibraries();
             SetEffects();

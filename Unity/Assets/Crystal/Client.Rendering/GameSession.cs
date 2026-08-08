@@ -420,6 +420,9 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.HeroBaseStatsInfo:
                     HeroBaseStatsInfo((S.HeroBaseStatsInfo)p);
                     break;
+                case (short)ServerPacketIds.MountUpdate:
+                    MountUpdate((S.MountUpdate)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -1375,6 +1378,20 @@ namespace Crystal.Client.Rendering
             GameScene.Hero.RefreshStats();
         }
 
+        // ── 坐骑（8-8-2）──
+
+        // S.MountUpdate：坐骑状态回声（旧版 GameScene.MountUpdate 逐字裁剪：无 CanRun/Redraw）。
+        // 按 ObjectID 分发到地图对象（PlayerObject.MountUpdate 已移植，MountType<0 隐藏面板）；
+        // 本机坐骑状态 → 重算属性 + 刷新坐骑面板。
+        internal static void MountUpdate(S.MountUpdate p)
+        {
+            if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is PlayerObject player)
+                player.MountUpdate(p);
+            if (MapObject.User == null || p.ObjectID != MapObject.User.ObjectID) return;
+            MapObject.User.RefreshStats();
+            GameScene.Scene?.MountDialog?.RefreshDialog();
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1677,6 +1694,11 @@ namespace Crystal.Client.Rendering
                 scene.HeroBehaviourPanel = heroBehaviour;
                 var heroManage = new HeroManageDialog { Parent = scene, Visible = false };
                 scene.HeroManageDialog = heroManage;
+                // 坐骑（8-8-2）：MountDialog 常驻创建默认隐藏（同 NPCDialog 模式）。Show 无坐骑时
+                // 弹 NoMount 提示不打开；MountButton→CanRide→@ride 骑乘；配饰装卸（C.EquipSlotItem）
+                // 裁剪（非骑乘核心闭环，旧版 MirItemCell 双击配饰亦未接分支）。
+                var mount = new MountDialog { Parent = scene, Visible = false };
+                scene.MountDialog = mount;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)
