@@ -7,10 +7,13 @@ using UnityEngine.Networking;
 
 namespace Crystal.Client.Rendering
 {
-    // 阶段7 第 4 项（移动资源包、下载和版本校验）：资源分发清单 + 版本比对 + HTTP 下载骨架。
-    // 数据源：AssetCompiler manifest 子命令（rel/size/sha256 递归清单，PascalCase 与 JsonUtility 精确匹配）。
-    // 链路：BuildLocalIndex（本地资源目录 sha256 索引）→ PlanDiff（远端清单 vs 本地，得需下载列表）
-    //   → DownloadFile（UnityWebRequest GET → 落盘 → sha256 校验，失败删脏文件）。
+    // 阶段7 第 4 项（移动资源包、下载和版本校验）：资源分发清单 + 版本比对 + HTTP 下载骨架；
+    // 阶段8 8-9-1（Manifest 版本系统）：远端清单带 Version，IsVersionOutdated 版本比对
+    //   （本地无清单/解析失败/版本不匹配 → 过期触发下载），文件级 PlanDiff 兜底。
+    // 数据源：AssetCompiler manifest 子命令（rel/size/sha256 + Version，PascalCase 与 JsonUtility 精确匹配）。
+    // 链路：BuildLocalIndex（本地资源目录 sha256 索引）→ IsVersionOutdated（版本判定）
+    //   → PlanDiff（远端清单 vs 本地，得需下载列表）→ DownloadFile（UnityWebRequest GET → 落盘
+    //   → sha256 校验，失败删脏文件）。
     // 本地资源目录约定镜像 assetcompile 布局：<destDir>/<rel>，图集 manifest 与页 PNG 同目录
     //   （AtlasLibrary.Load 要求），下载后即可加载。全量资源打包/增量清单属阶段8，本骨架验证机制。
 
@@ -26,6 +29,7 @@ namespace Crystal.Client.Rendering
     public sealed class ResourceManifest
     {
         public int Format;
+        public string Version;
         public string GeneratedUtc;
         public int Count;
         public long TotalBytes;
@@ -34,6 +38,30 @@ namespace Crystal.Client.Rendering
 
     public static class ResourceSync
     {
+        // 本地已落地清单的默认文件名（与下载目录同层，镜像远端 resource.manifest.json）。
+        public const string LocalManifestName = "resource.manifest.json";
+
+        // 版本比对：远端清单 vs 本地已落地清单 → 是否过期（需触发下载）。
+        // 本地无清单文件 / JSON 解析失败 / Version 不一致 → true（首启或版本升级/降级）。
+        // Version 一致 → false；文件级差异由 PlanDiff 兜底（版本未变但文件被篡改仍会检出）。
+        public static bool IsVersionOutdated(ResourceManifest remote, string localManifestPath)
+        {
+            if (remote == null || string.IsNullOrEmpty(remote.Version)) return true;
+            if (!File.Exists(localManifestPath)) return true;
+            ResourceManifest local;
+            try
+            {
+                local = JsonUtility.FromJson<ResourceManifest>(File.ReadAllText(localManifestPath));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[resource-sync] local manifest parse fail {localManifestPath}: {ex.Message}");
+                return true;
+            }
+            if (local == null || string.IsNullOrEmpty(local.Version)) return true;
+            return !string.Equals(remote.Version, local.Version, StringComparison.Ordinal);
+        }
+
         // 本地目录 → rel→(size, sha256) 索引（与远端清单同语义，rel 正斜杠）。目录不存在返回空。
         public static Dictionary<string, (long Size, string Sha256)> BuildLocalIndex(string dir)
         {
