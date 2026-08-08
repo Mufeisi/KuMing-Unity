@@ -135,6 +135,16 @@ namespace Crystal.Client.Rendering
             return true;
         }
 
+        // 好友私聊（8-6-2 Whisper 接线）：填 ChatTextBox "/名字 "（服务器按前缀路由私聊）+ SetChatText
+        // 聚焦显示 + 弹软键盘。不注入频道前缀（私聊前缀 / 优先，服务器按 / 分流）。与 OpenInput 同模式。
+        public static void OpenWhisper(ChatDialog dlg, string name)
+        {
+            if (dlg == null) return;
+            dlg.ChatTextBox.Text = "/" + name + " ";
+            dlg.SetChatText(""); // SetFocus + Visible=true + 光标尾部（空追加 no-op）
+            SoftKeyboardBridge.Focus(dlg.ChatTextBox);
+        }
+
         // 渲染（CrystalSpriteBatch 批次内调用）：聊天按钮青色 tint、频道按钮按当前频道色
         // （0 附近=灰绿 / 1 全员=橙 / 2 行会=紫）。纹理由调用方生成一次（白色方块，同 MobileBag）。
         public void Render(Texture2D tex)

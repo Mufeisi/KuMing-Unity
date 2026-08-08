@@ -293,6 +293,9 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.SendMemberLocation:
                     GroupMemberLocation((S.SendMemberLocation)p);
                     break;
+                case (short)ServerPacketIds.FriendUpdate:
+                    FriendUpdate((S.FriendUpdate)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -667,6 +670,16 @@ namespace Crystal.Client.Rendering
             }
         }
 
+        // 好友整表回声（8-6-2）：C.RefreshFriends/AddFriend/RemoveFriend/AddMemo 后服务端全量回 S.FriendUpdate
+        // （无增量包），填 FriendDialog.Friends；面板开着才 Update(false)（保选中，旧客户端同款）。
+        internal static void FriendUpdate(S.FriendUpdate p)
+        {
+            var dlg = GameScene.Scene?.FriendDialog;
+            if (dlg == null) return;
+            dlg.Friends = p.Friends;
+            if (dlg.Visible) dlg.Update(false);
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -912,6 +925,13 @@ namespace Crystal.Client.Rendering
                 // S.GroupInvite 弹 MirMessageBox YesNo（接受 → C.GroupInvite{true}）。
                 var group = new GroupDialog { Parent = scene, Visible = false };
                 scene.GroupDialog = group;
+                // 好友/黑名单（8-6-2）：常驻创建默认隐藏（同 NPCDialog 模式）。FriendDialog.Hide 连带
+                // Hide MemoDialog（实例引用）→ MemoDialog 须先建。移动端好友按钮 Toggle Show/Hide；
+                // Show 发 C.RefreshFriends → S.FriendUpdate 回声刷新整表。Whisper seam 由 MobileBootstrap 接。
+                var memo = new MemoDialog { Parent = scene, Visible = false };
+                scene.MemoDialog = memo;
+                var friend = new FriendDialog { Parent = scene, Visible = false };
+                scene.FriendDialog = friend;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

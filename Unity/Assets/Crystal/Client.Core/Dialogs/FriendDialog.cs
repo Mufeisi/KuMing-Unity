@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Crystal.Client.Core.MirMath;
+using Client;
 using Client.MirControls;
 using Client.MirGraphics;
+using Client.MirNetwork;
 using Client.MirSounds;
+using C = ClientPackets;
 
 namespace Client.MirScenes.Dialogs
 {
@@ -12,10 +15,11 @@ namespace Client.MirScenes.Dialogs
     // Title 199 好友 frame + Title 6 标题 + 好友/黑名单 tab（163/167 ↔ 164/166 状态切换）+ 12 行
     // FriendRow 翻页（Prguse2 240-245）+ Prguse 554-568 操作按钮 + MemoDialog 备注浮窗（Title 209）。
     // FriendRow 渲染：在线名绿/离线名白 + Selected 灰背景（BackColour），NameLabel 115×17。
-    // 裁剪：MirInputBox/MirMessageBox（未移植弹窗）→ Add/Remove 点击留空；MailComposeLetterDialog
-    // （邮件未移植）→ EmailButton 点击留空；WhisperButton 原填 ChatDialog 输入框（输入接管未接驳）
-    // → 点击留空；FriendRow hover 备注浮层（CreateMemoLabel 未接驳）→ 覆写裁剪；
-    // 网络交互（C.AddFriend/C.RemoveFriend/C.RefreshFriends/C.AddMemo）→ 点击留空（探针为渲染探针）。
+    // 网络交互（8-6-2 接回）：Add 弹 MirInputBox（好友/黑名单名按当前 tab 选文案）→ C.AddFriend；
+    // Remove 弹 MirMessageBox YesNo 确认 → C.RemoveFriend；MemoButton 开 MemoDialog，OK → C.AddMemo；
+    // Whisper 离线守卫后走 WhisperAction seam（移动端接 MobileChat.OpenWhisper 弹软键盘，PC 语义填
+    // ChatTextBox "/名字 "）；Show 发 C.RefreshFriends 拉整表。
+    // 裁剪：EmailButton（邮件未移植）；FriendRow hover 备注浮层（CreateMemoLabel 未接驳）→ 覆写裁剪。
     public sealed class FriendDialog : MirImageControl
     {
         public MirImageControl TitleLabel, FriendLabel, BlacklistLabel;
@@ -28,6 +32,10 @@ namespace Client.MirScenes.Dialogs
         private ClientFriend SelectedFriend = null;
         private bool _tempBlockedTab = false;
         private bool _blockedTab = false;
+
+        // 私聊 seam（8-6-2）：WhisperButton 触发（在线守卫通过后）。移动端接 MobileChat.OpenWhisper
+        // （填 ChatTextBox "/名字 " + SetChatText 聚焦 + 弹软键盘）；PC 语义直接填输入框。
+        public Action<string> WhisperAction;
 
         public int SelectedIndex = 0;
         public int StartIndex = 0;
@@ -150,7 +158,22 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.AddFriend)
             };
-            // AddButton.Click 原弹 MirInputBox 输入好友/黑名单名（未移植）→ 裁剪。
+            // AddButton.Click 原弹 MirInputBox 输入好友/黑名单名（8-6-2 接回：MirInputBox 已移植）→
+            // 按当前 tab 选提示文案，OK 发 C.AddFriend{Name, Blocked=_blockedTab}。
+            AddButton.Click += (o, e) =>
+            {
+                string message = GameLanguage.ClientTextMap.GetLocalization(_blockedTab ? ClientTextKeys.FriendEnterBlockName : ClientTextKeys.FriendEnterAddName);
+
+                MirInputBox inputBox = new MirInputBox(message);
+
+                inputBox.OKButton.Click += (o1, e1) =>
+                {
+                    Network.Enqueue(new C.AddFriend { Name = inputBox.InputTextBox.Text, Blocked = _blockedTab });
+                    inputBox.Dispose();
+                };
+
+                inputBox.Show();
+            };
 
             RemoveButton = new MirButton
             {
@@ -163,7 +186,22 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.RemoveFriend),
             };
-            // RemoveButton.Click 原弹 MirMessageBox 确认移除（未移植）→ 裁剪。
+            // RemoveButton.Click 原弹 MirMessageBox 确认移除（8-6-2 接回：MirMessageBox 已移植）→
+            // Yes 发 C.RemoveFriend{CharacterIndex=SelectedFriend.Index}。
+            RemoveButton.Click += (o, e) =>
+            {
+                if (SelectedFriend == null) return;
+
+                MirMessageBox messageBox = new MirMessageBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.ConfirmRemoveItem, SelectedFriend.Name), MirMessageBoxButtons.YesNo);
+
+                messageBox.YesButton.Click += (o1, e1) =>
+                {
+                    Network.Enqueue(new C.RemoveFriend { CharacterIndex = SelectedFriend.Index });
+                    messageBox.Dispose();
+                };
+
+                messageBox.Show();
+            };
 
             MemoButton = new MirButton
             {
@@ -208,7 +246,20 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.FriendWhisper)
             };
-            // WhisperButton.Click 原填 ChatDialog 输入框 "/名字 "（输入接管未接驳）→ 裁剪。
+            // WhisperButton.Click 原填 ChatDialog 输入框 "/名字 "（8-6-2 接回：离线守卫 + 走 WhisperAction
+            // seam——移动端 MobileChat.OpenWhisper 填框+聚焦+弹软键盘；PC 语义直填输入框）。
+            WhisperButton.Click += (o, e) =>
+            {
+                if (SelectedFriend == null) return;
+
+                if (!SelectedFriend.Online)
+                {
+                    GameScene.Scene.ChatDialog.ReceiveChat(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.PlayerNotOnline), ChatType.System);
+                    return;
+                }
+
+                if (WhisperAction != null) WhisperAction(SelectedFriend.Name);
+            };
             #endregion
         }
 
@@ -351,7 +402,8 @@ namespace Client.MirScenes.Dialogs
             if (Visible) return;
             Visible = true;
             UpdateDisplay();
-            // 原 Show 发包 C.RefreshFriends 拉好友列表（网络交互，探针直接注入 Friends）→ 裁剪。
+            // 原 Show 发包 C.RefreshFriends 拉好友列表（8-6-2 接回）→ S.FriendUpdate 回声刷新整表。
+            Network.Enqueue(new C.RefreshFriends());
         }
     }
     public sealed class FriendRow : MirControl
@@ -458,7 +510,13 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Location = new Point(30, 133)
             };
-            // OKButton.Click 原发包 C.AddMemo 保存备注（网络交互，探针不驱动）→ 裁剪。
+            // OKButton.Click 原发包 C.AddMemo 保存备注（8-6-2 接回）→ 发完 Hide。
+            OKButton.Click += (o, e) =>
+            {
+                if (Friend == null) return;
+                Network.Enqueue(new C.AddMemo { CharacterIndex = Friend.Index, Memo = MemoTextBox.Text });
+                Hide();
+            };
 
             CancelButton = new MirButton
             {

@@ -48,8 +48,9 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _quest = new MobileBag(1280, 720);  // 任务按钮（8-4-1）：装备下方开/关任务日记（蓝 tint）
         readonly MobileBag _map = new MobileBag(1280, 720);    // 大地图按钮（8-4-2）：任务下方开/关大地图（紫 tint）
         readonly MobileBag _group = new MobileBag(1280, 720);  // 组队按钮（8-6-1）：地图下方开/关组队面板（红 tint）
+        readonly MobileBag _friend = new MobileBag(1280, 720); // 好友按钮（8-6-2）：组队下方开/关好友/黑名单面板（青 tint）
         readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
-        Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
+        Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex, _friendTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
         {
@@ -106,6 +107,11 @@ namespace Crystal.Client.Rendering
             _group.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 4));
             _group.TintOpen = new Color(1f, 0.5f, 0.5f, 0.95f);
             _group.TintClosed = new Color(0.8f, 0.3f, 0.3f, 0.95f);
+            // 好友按钮（8-6-2）：组队按钮正下方，青 tint 与背包黄/装备绿/任务蓝/地图紫/组队红区分；开/关好友/黑名单面板。
+            _friend.OnToggle = ToggleFriend;
+            _friend.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 5));
+            _friend.TintOpen = new Color(0.4f, 0.85f, 0.9f, 0.95f);
+            _friend.TintClosed = new Color(0.25f, 0.6f, 0.65f, 0.95f);
             // 聊天（8-5-2）：底部左缘聊天/频道按钮。OnOpenInput=开输入框（首次开注入当前频道前缀）
             // + 弹软键盘；OnChannel=切换频道前缀（输入框开着则重写文本前缀并重开软键盘使初始文本生效，
             // 服务器按 !/@ 前缀分频道）。发送走软键盘 Enter（SoftKeyboardBridge Submitted → ChatTextBox_KeyPress
@@ -134,6 +140,12 @@ namespace Crystal.Client.Rendering
                 // 组队面板（8-6-1）：移动端组队按钮打开，Back 关闭（同任务/地图按钮面板）。
                 var group = scene != null ? scene.GroupDialog : null;
                 if (group != null && group.Visible) { group.Hide(); return true; }
+                // 备注浮窗（8-6-2）：好友面板子窗（MemoDialog），Back 先关浮窗（顶层先关，好友面板保留）。
+                var memo = scene != null ? scene.MemoDialog : null;
+                if (memo != null && memo.Visible) { memo.Hide(); return true; }
+                // 好友面板（8-6-2）：移动端好友按钮打开，Back 关闭（同组队/任务/地图按钮面板）。
+                var friend = scene != null ? scene.FriendDialog : null;
+                if (friend != null && friend.Visible) { friend.Hide(); return true; }
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
                 // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
@@ -216,7 +228,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true));
             // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
             // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
             // 避免寻路激活中重开地图被本帧立刻关闭。
@@ -274,6 +286,8 @@ namespace Crystal.Client.Rendering
                 _chat.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_group.ScreenW != GameRuntime.ScreenW || _group.ScreenH != GameRuntime.ScreenH)
                 _group.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_friend.ScreenW != GameRuntime.ScreenW || _friend.ScreenH != GameRuntime.ScreenH)
+                _friend.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -287,6 +301,7 @@ namespace Crystal.Client.Rendering
             var mini = scene != null ? scene.MiniMapDialog : null;
             var chat = scene != null ? scene.ChatDialog : null;
             var group = scene != null ? scene.GroupDialog : null;
+            var friend = scene != null ? scene.FriendDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -321,6 +336,11 @@ namespace Crystal.Client.Rendering
             if (chat != null) UiText.WarmTree(chat);
             // 组队面板（8-6-1）：开才预热字形（成员名/标题标签），批前须合帧（同任务/地图面板模式）。
             if (group != null && group.Visible) UiText.WarmTree(group);
+            // 好友面板（8-6-2）：开才预热字形（好友行名/标题/页号标签），批前须合帧（同组队面板模式）。
+            if (friend != null && friend.Visible) UiText.WarmTree(friend);
+            // 备注浮窗（8-6-2）：MemoDialog 为好友面板独立子窗（Title 209），开才预热字形（多行文本框）。
+            var memo = scene != null ? scene.MemoDialog : null;
+            if (memo != null && memo.Visible) UiText.WarmTree(memo);
             // 瞬态模态（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树（Modal=true），移动端无
             // 独立渲染通路，批前统一预热字形；ActiveModal 无缓存槽位，遍历 Controls 即得唯一模态。
             var modalControls = scene != null ? scene.Controls : null;
@@ -344,6 +364,8 @@ namespace Crystal.Client.Rendering
             if (qtrk != null && qtrk.Visible) qtrk.Draw();
             if (bigMap != null && bigMap.Visible) bigMap.Draw();
             if (group != null && group.Visible) group.Draw(); // 组队面板（8-6-1）：与任务/地图同层（背包面板之上）
+            if (friend != null && friend.Visible) friend.Draw(); // 好友面板（8-6-2）：与组队同层（背包面板之上）
+            if (memo != null && memo.Visible) memo.Draw(); // 备注浮窗（8-6-2）：好友子窗最顶层
             if (modalControls != null)
                 for (int i = 0; i < modalControls.Count; i++)
                 {
@@ -356,6 +378,7 @@ namespace Crystal.Client.Rendering
             _map.Render(_bagTex);
             _chat.Render(_chatTex);
             _group.Render(_groupTex);
+            _friend.Render(_friendTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -396,6 +419,7 @@ namespace Crystal.Client.Rendering
             _bagTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 背包按钮白色方块（Render tint 上色）
             _chatTex = SolidTexture((int)MobileChat.ButtonW, (int)MobileChat.ButtonH); // 聊天按钮白色方块（Render tint 上色）
             _groupTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 组队按钮白色方块（同背包按钮尺寸）
+            _friendTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 好友按钮白色方块（同背包按钮尺寸）
         }
 
         static Texture2D SolidTexture(int w, int h)
@@ -436,7 +460,8 @@ namespace Crystal.Client.Rendering
             var qdet = scene != null ? scene.QuestDetailDialog : null;
             var bigMap = scene != null ? scene.BigMapDialog : null;
             var group = scene != null ? scene.GroupDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var friend = scene != null ? scene.FriendDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -457,7 +482,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui) || _friend.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队/好友按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -683,6 +708,45 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] group-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] group-{(open ? "open" : "close")} visible={group.Visible}");
+        }
+
+        // 好友面板开关（8-6-2）：镜像组队面板——开时互斥隐藏背包/角色/组队面板并取消操作，
+        // 首次开注入 Whisper seam（移动端私聊弹软键盘）；关只 Hide。
+        void ToggleFriend(bool open)
+        {
+            var scene = GameScene.Scene;
+            var friend = scene != null ? scene.FriendDialog : null;
+            if (friend == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (!friend.Visible)
+                    {
+                        friend.WhisperAction = name => MobileChat.OpenWhisper(GameScene.Scene?.ChatDialog, name);
+                        var inv = scene != null ? scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide();
+                        var chr = scene != null ? scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide();
+                        var group = scene != null ? scene.GroupDialog : null;
+                        if (group != null && group.Visible) group.Hide();
+                        friend.Show();
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                        _autoPath.Cancel();
+                    }
+                }
+                else
+                {
+                    friend.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] friend-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] friend-{(open ? "open" : "close")} visible={friend.Visible}");
         }
 
         // 瞬态模态查找（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树且 Modal=true 阻断下层。

@@ -72,7 +72,7 @@
 - **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）；第5项 增量2 聊天触控（chatverify 11/11 + safearea/softkeyboard/minimap/ui 回归 PASS，见任务 `8-5-2`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第6项 增量1 组队流程触控化（8-6-1 ✅）已完成。下一增量 8-6-2 好友流程触控化。阶段8 第4/5项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅ + 8-5-1 软键盘+安全区 ✅ + 8-5-2 聊天 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
+**当前在途**：阶段8 第6项 增量2 好友流程触控化（8-6-2 ✅）已完成。下一增量 8-6-3 行会面板触控化。阶段8 第4/5项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅ + 8-5-1 软键盘+安全区 ✅ + 8-5-2 聊天 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -109,7 +109,7 @@
 | 8-5-1 | 软键盘桥接 + 安全区适配（基础） | 8·第5项 | ✅ | 8-0 | 1d |
 | 8-5-2 | 聊天触控化（频道/发送） | 8·第5项 | ✅ | 8-5-1 | 1d |
 | 8-6-1 | 组队流程触控化 | 8·第6项 | ✅ | 8-3-1 | 1d |
-| 8-6-2 | 好友流程触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
+| 8-6-2 | 好友流程触控化 | 8·第6项 | ✅ | 8-6-1 | 1d |
 | 8-6-3 | 行会面板触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
 | 8-7-1 | 交易窗口触控化 | 8·第7项 | 🔲 | 8-6-1 | 1d |
 | 8-7-2 | 邮件系统触控化 | 8·第7项 | 🔲 | 8-7-1 | 1d |
@@ -368,7 +368,7 @@
 - 实现：`MirInputBox` 移植（Modal 挂 `GameScene.Scene`，Prguse 660 + 单行 `MirTextBox` + OK/Cancel；Enter→OK / Esc→Cancel 键盘路由；移动端经 `TouchInputAdapter` 鼠标链点击 + 软键盘桥输入/提交，无原生 WinForms 表单裁剪 `Program.Form.Controls`）。`GroupDialog` 网络交互接回（PC 迭代包6 探针留空处补全）：SwitchButton→`C.SwitchGroup{!AllowGroup}`（允许态由回声 `S.SwitchGroup` 更新，开队清列表）；Add/Del 弹 `MirInputBox` 输入成员名 → `C.AddMember`/`C.DelMember`（客户端侧队长/满队守卫走 `ChatDialog.ReceiveChat` 提示，`GroupHasMaxMembers` 15 人/`YouAreNotGroupLeader`）；`public AddMember(string)` 直发供键盘。`GameSession` 补 7 派发（`internal static` + `InternalsVisibleTo` 供探针）：`S.SwitchGroup`（AllowGroup 同步+关队清列表）/`S.DeleteGroup`（清列表/字典/雷达 `BigMapViewPort.PlayerLocations`）/`S.DeleteMember`（三处移除+Group 频道提示）/`S.AddMember`（入列去重+提示）/`S.GroupMembersMap`（成员地图 upsert）/`S.SendMemberLocation`（封包 `System.Drawing.Point`→`MPoint` 雷达 upsert）/`S.GroupInvite`（弹 `MirMessageBox` YesNo：Yes→`C.GroupInvite{true}`+开 GroupDialog，No→`{false}` 拒绝，Esc→No 语义对齐移动端 Back）。`InitInGameDialogs` 常驻创建 `GroupDialog`（默认隐藏）。`MobileBootstrap` 组队入口（`_group` 按钮栈，红 tint，背包列下移 4 格）+ UiConsumer 链 + `BackHandler`（先关模态框再关组队面板）+ `uiOpen`/`bagOpen` 守卫 + RenderHud 每帧 `group.Draw()`+`UiText.WarmTree`（含瞬态模态框）。`GroupVerify` 16/16（常驻创建/切换按钮开-回声-关两拍/Add 弹窗+输入 OK 发包/输入框收起/Del 弹窗发包/直发+满队+非队长守卫/S.SwitchGroup 回声/DeleteGroup 三清/DeleteMember 三处移除/AddMember 去重/GroupMembersMap upsert/雷达 upsert/GroupInvite Yes 开窗/Esc 拒绝/输入框 Esc 取消不发包/Enter 提交/RouteTouch 组队按钮消费不喂摇杆）。
 
 #### 8-6-2 好友流程触控化
-状态：🔲｜预估：1d｜依赖：8-6-1
+状态：✅｜预估：1d｜依赖：8-6-1
 
 - 目标：好友增删/备注 触控流程。
 - 开发：复用 PC 迭代包6；动作接回；列表滚动触控。
@@ -376,6 +376,7 @@
 - 验证：探针 PASS + PC 回归 + 冒烟。
 - 提交：`feat(阶段8): 好友流程触控化`。
 - 验收：真机加/删好友。
+- 实现：`FriendDialog` 网络交互接回（PC 迭代包6 探针留空处补全）：Add 弹 `MirInputBox`（好友/黑名单 tab 分流提示文案 `FriendEnterBlockName`/`FriendEnterAddName`）→ `C.AddFriend{Name,Blocked}`；Remove 弹 `MirMessageBox` YesNo 确认 → `C.RemoveFriend{CharacterIndex}`；MemoButton 开 `MemoDialog`（预填 `Friend.Memo`），OK → `C.AddMemo{CharacterIndex,Memo}`；Whisper 离线守卫（`PlayerNotOnline` 系统消息）+ 走 `WhisperAction` seam（移动端接 `MobileChat.OpenWhisper` 填 `ChatTextBox "/名字 "` + `SetChatText` 聚焦 + 弹软键盘，PC 语义直填输入框）；Show → `C.RefreshFriends` 拉整表。`GameSession` 补 `S.FriendUpdate` 派发（`internal static` 供探针）：整表回声填 `FriendDialog.Friends`，面板开着 `Update(false)` 保选中重建行。`InitInGameDialogs` 常驻创建 `MemoDialog`+`FriendDialog`（默认隐藏）。`MobileChat` 新增 `OpenWhisper` static helper。`MobileBootstrap` 好友入口（`_friend` 按钮栈，青 tint，背包列下移 5 格）+ UiConsumer 链 + `BackHandler`（先关 `MemoDialog` 再关 `FriendDialog`）+ `uiOpen`/`bagOpen` 守卫 + RenderHud 每帧 `friend.Draw()`+`memo.Draw()`+`UiText.WarmTree`。`FriendVerify` 16/16（常驻创建/Show 发 Refresh/好友 tab Add 弹窗 OK 发包/黑名单 tab Blocked=true/回声隐藏填充+可见重建/行点选中+迁移/Remove 确认发包/未选中守卫/Whisper 在线 seam/离线守卫/Memo 预填 OK 发包/黑名单 tab 过滤/12 行翻页 Next-Prev/取消不发包/Close 面板关+Memo 联动/RouteTouch 好友按钮消费不喂摇杆）。
 
 #### 8-6-3 行会面板触控化
 状态：🔲｜预估：1d｜依赖：8-6-1
