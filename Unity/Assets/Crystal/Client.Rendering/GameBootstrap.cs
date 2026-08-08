@@ -27,6 +27,8 @@ namespace Crystal.Client.Rendering
             // 平台互斥：Android 归 MobileBootstrap（双组件可同挂 Main.unity，单活由平台守卫保证）。
             if (Application.platform == RuntimePlatform.Android) { enabled = false; return; }
             Application.targetFrameRate = 60;
+            // 日志 seam：还原旧客户端 CMain.Log 到 Unity 日志（PC 端，与 MobileBootstrap 一致）
+            CMain.LogImpl = Debug.Log;
             // 9-2 异常恢复：崩溃钩子最先注册（running.mark + crash.log），上次异常退出 → 安全模式
             CrashGuard.Init();
             // 9-2 首启设置：分辨率/全屏（Crystal.ini 持久化；首启写默认 1280×720 窗口）
@@ -53,9 +55,10 @@ namespace Crystal.Client.Rendering
             GameRuntime.ScreenW = Screen.width;
             GameRuntime.ScreenH = Screen.height;
             string exeDir = Path.GetDirectoryName(Application.dataPath);
-            GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.GetFullPath(Path.Combine(exeDir, "../Server/publish/Maps")));
-            GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/map")));
-            GameRenderer.AtlasDir = Env("CRYSTAL_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/all")));
+            // 发布目录结构：资源与 exe 同级（Maps/mapAtlas/atlas）；开发环境用 env 注入覆盖。
+            GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.Combine(exeDir, "Maps"));
+            GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.Combine(exeDir, "mapAtlas"));
+            GameRenderer.AtlasDir = Env("CRYSTAL_ATLAS_DIR", Path.Combine(exeDir, "atlas"));
             GameRenderer.BatchFloor = true;
 
             string host = Env("CRYSTAL_NET_HOST", "127.0.0.1");
@@ -104,7 +107,7 @@ namespace Crystal.Client.Rendering
             {
                 float fps = _fpsFrames / Mathf.Max(_fpsAccum, 0.0001f);
                 // 9-4 剖析：fps + 逻辑/渲染平均耗时（GameRuntime 累计）+ 本帧对象数
-                Debug.Log($"[pcplayer] perf fps={fps:F1} logic={GameRuntime.AvgLogicMs:F2}ms session={GameRuntime.AvgSessionMs:F2}ms objectsProc={GameRuntime.AvgObjectsMs:F2}ms render={GameRuntime.AvgRenderMs:F2}ms objs={GameRuntime.LastObjectDraws}");
+                Debug.Log($"[pcplayer] perf fps={fps:F1} logic={GameRuntime.AvgLogicMs:F2}ms session={GameRuntime.AvgSessionMs:F2}ms objectsProc={GameRuntime.AvgObjectsMs:F2}ms render={GameRuntime.AvgRenderMs:F2}ms objs={GameRuntime.LastObjectDraws} rx={Network.ReceivedPackets}");
                 _fpsAccum = 0; _fpsFrames = 0; _fpsLogAt = Time.unscaledTime;
             }
         }

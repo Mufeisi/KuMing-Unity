@@ -3,12 +3,15 @@
 # 产出：Build/pcperf-baseline.txt（基线数据，写回 migration-status）。
 # 用法：powershell -File Build/pcperf.ps1 [-Seconds 60]
 param(
-    [int]$Seconds = 60
+    [int]$Seconds = 60,
+    [string]$ClientExe = "",
+    [switch]$UseReleaseLayout   # 发布布局冒烟：不注入资源 env（走 exe 同级默认路径 Maps/mapAtlas/atlas）
 )
 $ErrorActionPreference = "Stop"
 $root = "D:\ChuanQi\Kmyq\Crystal-master"
 $publish = Join-Path $root "Build\Server\publish"
 $exe = Join-Path $root "Build\PC\Crystal.exe"
+if ($ClientExe) { $exe = $ClientExe }
 $playerLog = Join-Path $env:USERPROFILE "AppData\LocalLow\Mir2\Crystal\Player.log"
 $port = 7000
 $baseline = Join-Path $root "Build\pcperf-baseline.txt"
@@ -38,9 +41,13 @@ if (-not $ready) { if (-not $server.HasExited) { Stop-Process $server -Force }; 
 if (Test-Path $playerLog) { Remove-Item $playerLog -Force -ErrorAction SilentlyContinue }
 $env:CRYSTAL_NET_HOST = "127.0.0.1"; $env:CRYSTAL_NET_PORT = "$port"
 $env:CRYSTAL_LOGIN_ID = "pcplayer"; $env:CRYSTAL_LOGIN_PW = "pcplayer"
-$env:CRYSTAL_MAP_DIR = Join-Path $publish "Maps"
-$env:CRYSTAL_MAP_ATLAS_DIR = Join-Path $root "Build\assetcompile\map"
-$env:CRYSTAL_ATLAS_DIR = Join-Path $root "Build\assetcompile\all"
+if ($UseReleaseLayout) {
+    Remove-Item Env:CRYSTAL_MAP_DIR, Env:CRYSTAL_MAP_ATLAS_DIR, Env:CRYSTAL_ATLAS_DIR -ErrorAction SilentlyContinue
+} else {
+    $env:CRYSTAL_MAP_DIR = Join-Path $publish "Maps"
+    $env:CRYSTAL_MAP_ATLAS_DIR = Join-Path $root "Build\assetcompile\map"
+    $env:CRYSTAL_ATLAS_DIR = Join-Path $root "Build\assetcompile\all"
+}
 Remove-Item Env:CRYSTAL_AUTO_SHOT -ErrorAction SilentlyContinue
 
 $bootAt = Get-Date

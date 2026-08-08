@@ -51,11 +51,17 @@ namespace Client.MirNetwork
             try
             {
                 _client = new TcpClient { NoDelay = true };
+                CMain.Log($"[network] connect {Settings.IPAddress}:{Settings.Port} attempt={ConnectAttempt} max={MaxAttempts}");
                 _client?.BeginConnect(Settings.IPAddress, Settings.Port, Connection, null);
             }
             catch (ObjectDisposedException ex)
             {
                 if (Settings.LogErrors) CMain.SaveError(ex.ToString());
+                Disconnect();
+            }
+            catch (Exception ex)
+            {
+                CMain.Log($"[network] connect exception {ex.GetType().Name}: {ex.Message}");
                 Disconnect();
             }
         }
@@ -70,10 +76,12 @@ namespace Client.MirNetwork
                     !_client.Connected) ||
                     _client == null)
                 {
+                    CMain.Log("[network] endconnect not connected, retry");
                     Connect();
                     return;
                 }
 
+                CMain.Log("[network] tcp connected, begin receive");
                 _receiveList = new ConcurrentQueue<Packet>();
                 _sendList = new ConcurrentQueue<Packet>();
                 _rawData = new byte[0];
@@ -91,11 +99,13 @@ namespace Client.MirNetwork
             }
             catch (SocketException)
             {
+                CMain.Log("[network] endconnect socketexception, retry");
                 Thread.Sleep(100);
                 Connect();
             }
             catch (Exception ex)
             {
+                CMain.Log($"[network] endconnect exception {ex.GetType().Name}: {ex.Message}");
                 if (Settings.LogErrors) CMain.SaveError(ex.ToString());
                 Disconnect();
             }
@@ -215,6 +225,8 @@ namespace Client.MirNetwork
             _receiveList = null;
         }
 
+        public static int ReceivedPackets;   // 诊断：本帧收包数（Network.Process 计数，GameBootstrap fps 行输出）
+
         public static void Process()
         {
             if (_client == null || !_client.Connected)
@@ -258,6 +270,7 @@ namespace Client.MirNetwork
             while (_receiveList != null && !_receiveList.IsEmpty && handled < MaxPacketsPerFrame)
             {
                 if (!_receiveList.TryDequeue(out Packet p) || p == null) continue;
+                ReceivedPackets++;
                 OnPacket?.Invoke(p);
                 handled++;
             }

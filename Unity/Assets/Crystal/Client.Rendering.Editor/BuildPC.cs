@@ -21,6 +21,7 @@ namespace Crystal.Rendering.Editor
             "Assets/Crystal/Client.Rendering/Shaders/CrystalSpriteAdditive.shader",
             "Assets/Crystal/Client.Rendering/Shaders/CrystalSpriteReplace.shader",
             "Assets/Crystal/Client.Rendering/Shaders/CrystalSpriteMultiply.shader",
+            "Assets/Crystal/Client.Rendering/Shaders/CrystalSpriteOutline.shader",
         };
 
         public static void Run()
