@@ -67,6 +67,10 @@ namespace Client.MirGraphics
             // 大地图/小地图依赖库（迭代包5）：图集产物为 mmap（小地图瓦片图源）/MapLinkIcon（世界地图图标）。
             MiniMap = new MLibrary(Settings.DataPath + "mmap"),
             MapLinkIcon = new MLibrary(Settings.DataPath + "MapLinkIcon");
+        // 地面物品/金币图标库（sanduan 提取 A2 ItemObject）：.Lib 原文件名 FloorItems。
+        // 图集数据当前不在仓库 → GameRenderer.EnsureMLibrary 返回 null，运行时优雅跳过渲染
+        // （BodyLibrary null 守卫）；数据就位后补图集即可，代码路径不变。
+        public static MLibrary FloorItems = new MLibrary(Settings.DataPath + "FloorItems");
 
         // 玩家/英雄形象库数组：旧客户端在 static ctor 中 InitLibrary 填充，seam 保留空数组契约。
         public static MLibrary[] CArmours = new MLibrary[2048];

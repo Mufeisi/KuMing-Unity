@@ -24,7 +24,7 @@ namespace Crystal.Client.Rendering
     // 运行时网络游戏会话：从 Editor 探针 NetProbe 抽取核心协议（去断言/编排 mode 分支）。
     // 覆盖：登录状态机（ClientVersion→Login→自适应 NewAccount→LoginSuccess→NewCharacter→StartGame）、
     // 进图（MapInformation→LoadMap，UserInformation→EnsureUser）、对象分发
-    // （ObjectMonster/Npc/Turn/Walk/Run/Remove/UserLocation）。UI 与主循环经事件/状态订阅。
+    // （ObjectMonster/Npc/Spell/Item/Gold/Turn/Walk/Run/Remove/UserLocation）。UI 与主循环经事件/状态订阅。
     public static class GameSession
     {
         public static event Action OnSelectReady;      // 登录成功，角色列表就绪
@@ -174,6 +174,15 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.ObjectNpc:
                     ObjectNpc((S.ObjectNPC)p);
                     break;
+                case (short)ServerPacketIds.ObjectSpell:
+                    ObjectSpell((S.ObjectSpell)p);
+                    break;
+                case (short)ServerPacketIds.ObjectItem:
+                    ObjectItem((S.ObjectItem)p);
+                    break;
+                case (short)ServerPacketIds.ObjectGold:
+                    ObjectGold((S.ObjectGold)p);
+                    break;
                 case (short)ServerPacketIds.ObjectTurn:
                     ObjectMove((S.ObjectTurn)p, MirAction.Standing);
                     break;
@@ -252,6 +261,54 @@ namespace Crystal.Client.Rendering
 
             npo = new NPCObject(p.ObjectID);
             npo.Load(p);
+        }
+
+        internal static void ObjectSpell(S.ObjectSpell p)
+        {
+            if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
+            {
+                spo.Load(p);
+                return;
+            }
+
+            spo = new SpellObject(p.ObjectID);
+            spo.Load(p);
+        }
+
+        // 地面物品/金币共用 ItemObject（金币走 Load(S.ObjectGold) 分级帧）。
+        // FloorItems 图集数据当前不在仓库（EnsureFloorItems null）→ 不建对象优雅跳过；
+        // 数据就位后补图集即可，代码路径不变。
+        internal static void ObjectItem(S.ObjectItem p)
+        {
+            if (EnsureFloorItems() == null) return;
+            if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is ItemObject io)
+            {
+                io.Load(p);
+                return;
+            }
+
+            io = new ItemObject(p.ObjectID);
+            io.Load(p);
+        }
+
+        internal static void ObjectGold(S.ObjectGold p)
+        {
+            if (EnsureFloorItems() == null) return;
+            if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is ItemObject ig)
+            {
+                ig.Load(p);
+                return;
+            }
+
+            ig = new ItemObject(p.ObjectID);
+            ig.Load(p);
+        }
+
+        static MLibrary EnsureFloorItems()
+        {
+            var m = GameRenderer.EnsureMLibrary("FloorItems");
+            if (m != null) Libraries.FloorItems = m;
+            return m;
         }
 
         static void EnsureObjectLib(ushort img, MLibrary[] slot, string key)

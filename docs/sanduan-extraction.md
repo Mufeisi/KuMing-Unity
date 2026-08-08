@@ -10,17 +10,17 @@
 
 ## A. 对象模型缺口（最高优先，直接可参考）
 
-### A1. `Assets/Client/MirObjects/SpellObject.cs`（378 行）
+### A1. `Assets/Client/MirObjects/SpellObject.cs`（378 行） ✅ 已完成（2026-08-08）
 - **内容**：SpellObject 完整实现（魔法投射物对象：`Process`/`Draw`/`DrawEffects`，基于 Shared.Unity 类型）。
 - **本项目缺口**：`Unity/Assets/Crystal/Client.Core/Ported/` 缺此文件（对象模型中唯一缺失的投射物类）。
 - **可迁移性**：**高**。项目对齐方式为"从旧源码逐字移植 + MirMath/seam 适配"；sanduan 版提供 Unity 化后的语义参照（尤其 Draw 层叠、混合语义）。
-- **验证方式**：移植后用 `tools/CoreVerify`（0 警告 0 错误）+ 真实服务器魔法 E2E 探针（P4 链路已有魔法交互基础）。
+- **落地**：`Ported/SpellObject.cs` 逐字移植（33 个 Spell case 帧选择 + 地图特效/音效副作用 + Process 帧推进 + DrawBlend 混合）。`GameSession` 新增 `ObjectSpell` 派发。验证：`tools/CoreVerify` 0 错误 + `ObjectModelVerify` 24/24 PASS。
 
-### A2. `Assets/Client/MirObjects/ItemObject.cs`（153 行）
+### A2. `Assets/Client/MirObjects/ItemObject.cs`（153 行） ✅ 已完成（2026-08-08）
 - **内容**：ItemObject 完整实现（地面拾取物对象）。
 - **本项目缺口**：同 A1，`Ported/` 缺此文件。
 - **可迁移性**：**高**（小文件，逻辑简单）。
-- **验证方式**：同上。
+- **落地**：`Ported/ItemObject.cs` 逐字移植（ObjectItem 装载 + ObjectGold 分级帧 112-116 + Process 居中换算）。`Libraries` 新增 `FloorItems` 槽位（图集数据不在仓库 → `GameRenderer.EnsureMLibrary` 返回 null → 运行时优雅跳过渲染，数据就位后补图集即可）。`GameSession` 新增 `ObjectItem`/`ObjectGold` 派发。验证：CoreVerify 0 错误 + ObjectModelVerify 24/24 PASS。
 
 > 备注：`MonsterObject`（5720 行）/`PlayerObject`（5567 行）/`UserObject`（834 行）本项目**已移植**（阶段2 里程碑 1-5c，CoreVerify 0 错误），sanduan 版本仅作移植语义交叉参考，不再构成缺口。
 
@@ -104,11 +104,11 @@
 
 ## 提取优先级建议
 
-| 优先级 | 事项 | 对应项 | 预估 |
-|---|---|---|---|
-| P0 | 移植 SpellObject + ItemObject（补全对象模型） | A1/A2 | 1~2d |
-| P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d |
-| P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d |
-| P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d |
-| P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d |
-| P3 | MirMath seam 边缘对照（ColorTranslator/SystemInformation） | D1 | 随用随查 |
+| 优先级 | 事项 | 对应项 | 预估 | 状态 |
+|---|---|---|---|---|
+| P0 | 移植 SpellObject + ItemObject（补全对象模型） | A1/A2 | 1~2d | ✅ 2026-08-08（CoreVerify 0 错误 + ObjectModelVerify 24/24） |
+| P1 | OutLine 描边 shader 复刻 + 验证 | B | 0.5~1d | ⬜ 下一项 |
+| P1 | 光源脉冲/AmbientLightBlend 对照补 R5 | B | 0.5d | ⬜ |
+| P2 | Android 软键盘桥（MirTextBox + TouchScreenKeyboard） | C1 | 1d | ⬜ |
+| P2 | 分辨率缩放统一（TouchInputMapper 对照 SizeRatio） | C2 | 0.5d | ⬜ |
+| P3 | MirMath seam 边缘对照（ColorTranslator/SystemInformation） | D1 | 随用随查 | ⬜ |
