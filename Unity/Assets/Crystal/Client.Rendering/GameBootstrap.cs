@@ -89,6 +89,23 @@ namespace Crystal.Client.Rendering
             PollInput();
             GameRuntime.TickLogic();
             MaybeAutoShot();
+            MaybeFpsLog();
+        }
+
+        // 9-4 性能基线：每 5s 输出 [pcplayer] fps=<当前帧率>（1s 滑动均值），供 pcperf.ps1 采样。
+        float _fpsAccum;
+        int _fpsFrames;
+        double _fpsLogAt;
+        void MaybeFpsLog()
+        {
+            _fpsAccum += Time.unscaledDeltaTime;
+            _fpsFrames++;
+            if (Time.unscaledTime - _fpsLogAt >= 5.0)
+            {
+                float fps = _fpsFrames / Mathf.Max(_fpsAccum, 0.0001f);
+                Debug.Log($"[pcplayer] fps={fps:F1}");
+                _fpsAccum = 0; _fpsFrames = 0; _fpsLogAt = Time.unscaledTime;
+            }
         }
 
         void OnPostRender()
