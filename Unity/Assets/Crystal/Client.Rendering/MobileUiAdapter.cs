@@ -75,9 +75,37 @@ namespace Crystal.Client.Rendering
             var ui = ToUi(raw);
             if (r.UiConsumer != null && r.UiConsumer(fingerId, phase, ui)) return;
             if (r.PanelOpen) return;
-            if (phase == JoystickPhase.Down && r.DialogHit != null && r.DialogHit(ToUiPoint(raw))) return;
+            if (phase == JoystickPhase.Down && r.DialogHit != null && r.DialogHit(ToUiPoint(raw)))
+            {
+                // 8-5-1 软键盘桥触控接线：Down 落在可见对话框内 → 命中 MirTextBox 则聚焦弹软键盘
+                // （MirTextBox.OnMouseDown 已 SetFocus 画光标，本步只补 TouchScreenKeyboard）。
+                TryFocusTextBox(ToUiPoint(raw));
+                return;
+            }
             if (r.Joystick != null) r.Joystick(fingerId, phase, raw);
             if (r.Hud != null) r.Hud(fingerId, phase, ui);
+        }
+
+        // ---- 软键盘触控聚焦（8-5-1）----
+        // Down 命中可见且启用的 MirTextBox → SoftKeyboardBridge.Focus（Open TouchScreenKeyboard，
+        // 初始文本/密码/最大长度走框属性）；不可见/禁用跳过。递归子树（对话框内输入框）。
+        // 启用态读 InputTextBox.Enabled（MirControl.Enabled getter 为 internal，跨程序集不可读）。
+        public static bool TryFocusTextBox(MPoint p) => TryFocusTextBox(DialogRoot(), p);
+
+        public static bool TryFocusTextBox(MirControl ctrl, MPoint p)
+        {
+            if (ctrl == null || !ctrl.Visible) return false;
+            if (ctrl is MirTextBox tb
+                && tb.TextBox != null && !tb.TextBox.IsDisposed && tb.TextBox.Enabled
+                && tb.DisplayRectangle.Contains(p))
+            {
+                SoftKeyboardBridge.Focus(tb);
+                return true;
+            }
+            if (ctrl.Controls != null)
+                for (int i = 0; i < ctrl.Controls.Count; i++)
+                    if (TryFocusTextBox(ctrl.Controls[i], p)) return true;
+            return false;
         }
 
         // ---- 返回键（Android Back → 关顶层对话框）----

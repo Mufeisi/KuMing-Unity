@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第4项 已全收口——任务四窗（8-4-1 ✅）+ 大地图（8-4-2 ✅）+ 小地图（8-4-3 ✅）。下一增量 8-5-1 软键盘+安全区。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
+**当前在途**：阶段8 第5项 增量1 软键盘+安全区（8-5-1 ✅）已完成。下一增量 8-5-2 聊天触控化。阶段8 第4项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -106,7 +106,7 @@
 | 8-4-1 | 任务四窗触控化 | 8·第4项 | ✅ | 8-3-1 | 1d |
 | 8-4-2 | 大地图触控化 | 8·第4项 | ✅ | 8-4-1 | 0.5~1d |
 | 8-4-3 | 小地图触控化 | 8·第4项 | ✅ | 8-4-1 | 0.5~1d |
-| 8-5-1 | 软键盘桥接 + 安全区适配（基础） | 8·第5项 | 🔲（桥已就绪：`SoftKeyboardBridge`，sanduan P2 提取交付，安全区待做） | 8-0 | 1d |
+| 8-5-1 | 软键盘桥接 + 安全区适配（基础） | 8·第5项 | ✅ | 8-0 | 1d |
 | 8-5-2 | 聊天触控化（频道/发送） | 8·第5项 | 🔲 | 8-5-1 | 1d |
 | 8-6-1 | 组队流程触控化 | 8·第6项 | 🔲 | 8-3-1 | 1d |
 | 8-6-2 | 好友流程触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
@@ -335,7 +335,7 @@
 - 实现：`InitInGameDialogs` 常驻创建 `MiniMapDialog`（HUD 右上角，旧客户端 GameScene ctor 直接建，Visible 默认 true）+ `DuraStatusPanel` seam 占位（旧客户端 DuraStatusDialog 未移植，Toggle/档位自适应读其 Location → 空控件防 NRE）。档位切换/大地图按钮已内置（ToggleButton Index 2102-2104 → `Toggle` 2090↔2091、BigMapButton 2096-2098 → `BigMapDialog.Toggle`），TouchInputAdapter 鼠标链触控自动生效。`MobileBootstrap`：RenderHud 每帧 `mini.Process()`（刷地图名/坐标）+ `UiText.WarmTree` + `Draw`（背包面板打开仍显示，旧客户端 HUD 常驻语义）；`MobileHud.Hit` 扩展小地图 DisplayRectangle 区（点小地图按钮走 MirButton.Click 链，不触发世界 tap）。`MiniMapVerify` 6/6（常驻+初始大档/档位双向切换/Process 文本/大地图开合/BeforeDraw 无图强切小档+有图校正大档/DuraStatusPanel 契约）。
 
 #### 8-5-1 软键盘桥接 + 安全区适配（基础）
-状态：🔲｜预估：1d｜依赖：8-0
+状态：✅｜预估：1d｜依赖：8-0
 
 - 目标：`TouchScreenKeyboard` 桥接 + `Screen.safeArea` 布局钩子，移动 UI 全局生效。
 - 开发：`MirTextBox` → `TouchScreenKeyboard` 桥（阶段7 推迟项就位）；`Screen.safeArea` 驱动 HUD/按钮/背包布局（替换硬编码 margin，接入 8-0 适配层）。
@@ -343,6 +343,7 @@
 - 验证：探针 PASS + PC 回归 `net-ui.ps1` + 冒烟。
 - 提交：`feat(阶段8): 软键盘桥接 + 安全区适配`。
 - 验收：真机输入中文/英文；刘海机按钮不被遮挡。
+- 实现：`SafeArea` 单一来源（`Screen.safeArea` 左下原点 → 四边 inset `(left,top,right,bottom)`，Provider seam 注入，消费方一律读它禁各自硬编码）——`MobileHud` 血条（顶/左 inset 下移内缩）+ 攻击按钮（底/右 inset 上抬内缩）、`MobileBag` 右上按钮列 + 派生按钮（装备/任务/地图 SetMargin 堆叠）继承；inset=0（非刘海全屏）布局与旧基准逐像素一致。软键盘触控接线（桥 `SoftKeyboardBridge` 于 sanduan P2 交付，本项补接线）：`MobileUiAdapter.RouteTouch` Down 命中可见启用 `MirTextBox` → `TryFocusTextBox`（递归子树，`InputTextBox.Enabled` 读启用态——`MirControl.Enabled` getter internal 跨程序集不可读）→ `SoftKeyboardBridge.Focus`（Open TouchScreenKeyboard，初始文本/密码/最大长度走框属性），Poll 文本回流 + Enter 提交（`KeyPress(Enter)` 进控件树，ChatDialog/登录同链）。`SafeAreaVerify` 7/7（inset 注入读值/HUD 偏移/背包+派生列继承/inset=0 回归不漂移/聚焦 Open+文本回流+Enter 提交/框外·不可见·禁用不聚焦/RouteTouch Down 聚焦+对话框消费不喂摇杆）。
 
 #### 8-5-2 聊天触控化
 状态：🔲｜预估：1d｜依赖：8-5-1

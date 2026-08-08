@@ -32,6 +32,7 @@ namespace Crystal.Client.Rendering
         public int Hp, Mp, MaxHp, MaxMp;
 
         Vector2 _attackCenter;
+        Vector2 _hpPos; // 血条实际位置（基准 HpBarPos + 安全区偏移，8-5-1）
         bool _attackPressed;
 
         public MobileHud(int screenW, int screenH)
@@ -48,10 +49,16 @@ namespace Crystal.Client.Rendering
             RecomputeLayout();
         }
 
-        // 攻击按钮圆心：右下角（右缘 90px、底缘 160px 锚定，拇指可达区）。
-        void RecomputeLayout() => _attackCenter = new Vector2(ScreenW - 90f, ScreenH - 160f);
+        // 布局重算：右下攻击按钮圆心 + 左上血条（安全区偏移：刘海顶→血条下移、Home indicator 底→攻击按钮上抬、
+        // 左右 inset→内缩）。SafeArea 默认全屏 inset=0 → 布局与旧基准一致（探针契约）。
+        void RecomputeLayout()
+        {
+            _attackCenter = new Vector2(ScreenW - SafeArea.Right - 90f, ScreenH - SafeArea.Bottom - 160f);
+            _hpPos = new Vector2(SafeArea.Left + HpBarPos.x, SafeArea.Top + HpBarPos.y);
+        }
 
         public Vector2 AttackCenter => _attackCenter;
+        public Vector2 HpPos => _hpPos; // 安全区生效的血条渲染位置（探针断言）
         public bool AttackPressed => _attackPressed;
         public bool AttackReady => Now() >= _attackCdUntil;
         long _attackCdUntil;
@@ -127,9 +134,9 @@ namespace Crystal.Client.Rendering
             CrystalSpriteBatch.Draw(attackTex, Full(attackTex), new Vector3(_attackCenter.x - AttackRadius, _attackCenter.y - AttackRadius, 0f), atk);
 
             var hpr = new Rect(0f, 0f, hpTex.width * HpRatio, hpTex.height);
-            CrystalSpriteBatch.Draw(hpTex, hpr, new Vector3(HpBarPos.x, HpBarPos.y, 0f), new Color(0.9f, 0.15f, 0.15f, 0.9f));
+            CrystalSpriteBatch.Draw(hpTex, hpr, new Vector3(_hpPos.x, _hpPos.y, 0f), new Color(0.9f, 0.15f, 0.15f, 0.9f));
             var mpr = new Rect(0f, 0f, mpTex.width * MpRatio, mpTex.height);
-            CrystalSpriteBatch.Draw(mpTex, mpr, new Vector3(HpBarPos.x, HpBarPos.y + HpBarSize.y + MpBarGap, 0f), new Color(0.15f, 0.35f, 0.9f, 0.9f));
+            CrystalSpriteBatch.Draw(mpTex, mpr, new Vector3(_hpPos.x, _hpPos.y + HpBarSize.y + MpBarGap, 0f), new Color(0.15f, 0.35f, 0.9f, 0.9f));
         }
 
         static Rect Full(Texture2D t) => new Rect(0f, 0f, t.width, t.height);

@@ -52,7 +52,9 @@ namespace Crystal.Client.Rendering
             Recompute();
         }
 
-        void Recompute() => _rect = new Rect(ScreenW - ButtonW - Margin.x, Margin.y, ButtonW, ButtonH);
+        // 右上角锚定重算：右/顶安全区 inset 内缩（刘海顶→按钮下移、Home indicator/圆角右→内缩）。
+        // 派生按钮（装备/任务/地图 SetMargin 下移）继承本方法 → 整列同步偏移。SafeArea 默认全屏 inset=0 → 布局不变。
+        void Recompute() => _rect = new Rect(ScreenW - ButtonW - Margin.x - SafeArea.Right, Margin.y + SafeArea.Top, ButtonW, ButtonH);
 
         public Rect ButtonRect => _rect;
         public bool HitTest(Vector2 pos) => _rect.Contains(pos);
