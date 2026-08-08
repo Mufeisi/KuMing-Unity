@@ -16,10 +16,10 @@ namespace Client.MirScenes.Dialogs
     // / MailItemRow 单行（未读/锁定/包裹/选中标记 + 发件人/摘要）/ MailComposeLetterDialog 写信
     // （Title 671）/ MailComposeParcelDialog 寄包裹（Title 674，邮票 + 5 格物品 + 金币）
     // / MailReadLetterDialog 读信（Title 672）/ MailReadParcelDialog 读包裹（Title 675，领取）。
-    // 裁剪：SendButton.Click 原弹 MirInputBox 输入收件人（未移植弹窗基类）→ 点击留空；
-    // DeleteButton.Click 原 MirMessageBox YesNo 确认（未移植）→ 改为直接发包；
-    // GoldSendLabel.Click 原弹 MirAmountBox 输入金币（未移植）→ 点击留空；
+    // 裁剪：DeleteButton.Click 原 MirMessageBox YesNo 确认（未移植）→ 改为直接发包；
     // HelpButton.Click 原调 Scene.HelpDialog.DisplayPage（帮助系统未移植）→ 点击留空；
+    // SendButton.Click（发信）/ GoldSendLabel.Click（输金币）已于 8-7-2 接回（MirInputBox/
+    // MirAmountBox 移植 + 软键盘桥可用，见方法内注释）。
     // 网络发包（C.SendMail/C.DeleteMail/C.LockMail/C.ReadMail/C.CollectParcel/C.MailCost/
     // C.MailLockedItem）保留（Network 已可用）。
     public class MailListDialog : MirImageControl
@@ -30,7 +30,9 @@ namespace Client.MirScenes.Dialogs
 
         MirLabel PageLabel;
         MirButton PreviousButton, NextButton;
-        MirButton SendButton, ReplyButton, ReadButton, DeleteButton, BlockListButton, BugReportButton;
+        // 发送按钮 public（探针 seam，同 TradeDialog.ConfirmButton/CloseButton 惯例）。
+        public MirButton SendButton;
+        MirButton ReplyButton, ReadButton, DeleteButton, BlockListButton, BugReportButton;
 
         public MailItemRow[] Rows = new MailItemRow[10];
 
@@ -177,7 +179,18 @@ namespace Client.MirScenes.Dialogs
                 Sound = SoundList.ButtonA,
                 Hint = GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.Send)
             };
-            // SendButton.Click 原弹 MirInputBox 输入收件人（未移植弹窗基类）→ 点击留空。
+            // 发邮件（8-7-2）：点发送弹 MirInputBox 输收件人（旧客户端 MailDialogs.cs:165 逐字，
+            // 8-5-1 软键盘桥已可用）→ MailComposeLetterDialog.ComposeMail 打开写信窗（文本邮件）。
+            SendButton.Click += (o, e) =>
+            {
+                var box = new MirInputBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.EnterMailToName));
+                box.OKButton.Click += (o1, e1) =>
+                {
+                    GameScene.Scene.MailComposeLetterDialog.ComposeMail(box.InputTextBox.Text);
+                    box.Dispose();
+                };
+                box.Show();
+            };
 
             ReplyButton = new MirButton
             {
@@ -786,7 +799,34 @@ namespace Client.MirScenes.Dialogs
                 Size = new Size(143, 15),
                 Sound = SoundList.Gold,
             };
-            // GoldSendLabel.Click 原弹 MirAmountBox 输入金币金额（未移植弹窗基类）→ 点击留空。
+            // 金币输入（8-7-2）：点金币标签弹 MirAmountBox 输金额（旧客户端 MailDialogs.cs:808 逐字，
+            // 仿交易 GoldLabel 模式）。背包选中格时不可输入（对齐旧客户端 SelectedCell==null 守卫）；
+            // OK 且 Amount>0 → GiftGoldAmount 累加 + 扣 GameScene.Gold + 刷新标签 + CalculatePostage。
+            GoldSendLabel.Click += (o, e) =>
+            {
+                if (GameScene.SelectedCell == null && GameScene.Gold > 0)
+                {
+                    var amountBox = new MirAmountBox(
+                        GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.SendAmount),
+                        116, GameScene.Gold);
+
+                    amountBox.OKButton.Click += (c, a) =>
+                    {
+                        if (amountBox.Amount > 0)
+                        {
+                            GiftGoldAmount += amountBox.Amount;
+                            GameScene.Gold -= amountBox.Amount;
+                        }
+
+                        GoldSendLabel.Text = GiftGoldAmount.ToString("###,###,##0");
+
+                        CalculatePostage();
+                    };
+
+                    amountBox.Show();
+                    GameScene.PickedUpGold = false;
+                }
+            };
 
             SendButton = new MirButton
             {

@@ -289,6 +289,25 @@ namespace Client.MirControls
                 GameScene.SelectedCell = null;
                 return;
             }
+            // 背包 → 邮件格放入（8-7-2）：对齐旧客户端 MirItemCell.cs:1763-1790 逐字——目标
+            // Mail 格为空（OnMouseClick 已保证 Item==null）+ 源为背包格 → 移入 Items 槽、源格锁
+            // （防再点）、ItemsIdx[slot]=UniqueID、清选中、CalculatePostage 刷邮资。禁邮物品
+            // （BindMode.DontTrade）拦截提示；无单格取回（Close/Cancel 走 ResetLockedCells
+            // 逐格发 C.MailLockedItem{Locked=false} 解源格锁）。
+            if (src.GridType == MirGridType.Inventory && GridType == MirGridType.Mail && Item == null)
+            {
+                if (src.Item.Info.Bind.HasFlag(BindMode.DontTrade))
+                {
+                    GameScene.Scene.ChatDialog.ReceiveChat("You cannot mail this item.", ChatType.System);
+                    return;
+                }
+                Item = src.Item;
+                src.Locked = true;
+                MailComposeParcelDialog.ItemsIdx[ItemSlot] = src.Item.UniqueID;
+                GameScene.SelectedCell = null;
+                GameScene.Scene.MailComposeParcelDialog.CalculatePostage();
+                return;
+            }
         }
 
         // 阶段8 第2项 增量3：双击使用/卸下（旧客户端 OnMouseDoubleClick 298-310 行同源）。

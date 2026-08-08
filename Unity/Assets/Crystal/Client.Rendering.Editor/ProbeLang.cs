@@ -185,6 +185,13 @@ namespace Crystal.Rendering.Editor
             // 交易（8-7-1）：TradeRequest 弹窗标题 / MirAmountBox 金币输入标题（探针渲染断言文本）。
             { ClientTextKeys.PlayerRequestedTrade, "玩家 {0} 要求与你交易" },
             { ClientTextKeys.TradeAmount, "交易金额:" },
+
+            // 邮件（8-7-2）：发信/寄包裹 MirInputBox 收件人提示、寄包裹金币 MirAmountBox 标题、
+            // ParcelCollected 领取结果提示（探针渲染断言文本）。
+            { ClientTextKeys.EnterMailToName, "请输入收件人姓名。" },
+            { ClientTextKeys.SendAmount, "发送金额:" },
+            { ClientTextKeys.NoParcelsToCollect, "没有可领取的包裹。" },
+            { ClientTextKeys.AllParcelsCollected, "所有包裹已领取。" },
         };
     }
 }

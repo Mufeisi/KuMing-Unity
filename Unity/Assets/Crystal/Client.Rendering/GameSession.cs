@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Client;
 using Client.MirControls;
 using Client.MirGraphics;
@@ -334,6 +335,24 @@ namespace Crystal.Client.Rendering
                     break;
                 case (short)ServerPacketIds.RetrieveTradeItem:
                     RetrieveTradeItem((S.RetrieveTradeItem)p);
+                    break;
+                case (short)ServerPacketIds.ReceiveMail:
+                    ReceiveMail((S.ReceiveMail)p);
+                    break;
+                case (short)ServerPacketIds.MailLockedItem:
+                    MailLockedItem((S.MailLockedItem)p);
+                    break;
+                case (short)ServerPacketIds.MailSendRequest:
+                    MailSendRequest();
+                    break;
+                case (short)ServerPacketIds.MailSent:
+                    MailSent((S.MailSent)p);
+                    break;
+                case (short)ServerPacketIds.ParcelCollected:
+                    ParcelCollected((S.ParcelCollected)p);
+                    break;
+                case (short)ServerPacketIds.MailCost:
+                    MailCost((S.MailCost)p);
                     break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
@@ -920,6 +939,92 @@ namespace Crystal.Client.Rendering
             fromCell.Item = null;
         }
 
+        // S.ReceiveMail：邮件全量表回流（8-7-2）。排序对齐旧客户端 GameScene.cs:6516 逐字——
+        // 未锁定在前（!Locked 降序）再 DateSent 倒序；逐封 Bind 包裹物品（补 ItemInfo）；
+        // 含未读 → 置 NewMail 标记（MiniMapDialog 新邮件角标）；MailListDialog.UpdateInterface 刷新列表。
+        internal static void ReceiveMail(S.ReceiveMail p)
+        {
+            var scene = GameScene.Scene;
+            var user = MapObject.User;
+            if (scene == null || user == null) return;
+            scene.NewMail = false;
+            scene.NewMailCounter = 0;
+            user.Mail.Clear();
+            user.Mail = p.Mail.OrderByDescending(e => !e.Locked).ThenByDescending(e => e.DateSent).ToList();
+            foreach (var mail in user.Mail)
+                foreach (var itm in mail.Items)
+                    GameScene.Bind(itm);
+            if (user.Mail.Any(e => !e.Opened))
+                scene.NewMail = true;
+            if (scene.MailListDialog != null) scene.MailListDialog.UpdateInterface();
+        }
+
+        // S.MailLockedItem：服务器回声中视锁（寄包裹时源背包格锁，旧客户端 GameScene.cs:6537 逐字）。
+        // 发送成功/取消后由服务器再下发解锁；MailComposeParcelDialog.ResetLockedCells 也发该包回声。
+        internal static void MailLockedItem(S.MailLockedItem p)
+        {
+            var scene = GameScene.Scene;
+            if (scene?.InventoryDialog == null) return;
+            var cell = scene.InventoryDialog.GetCell(p.UniqueID);
+            if (cell != null) cell.Locked = p.Locked;
+        }
+
+        // S.MailSendRequest：服务端请求写邮件（寄包裹入口）→ MirInputBox 输收件人（旧客户端
+        // GameScene.cs:6544 逐字）→ ComposeMail 打开寄包裹窗 + 开背包（选物放入）。
+        internal static void MailSendRequest()
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            var box = new MirInputBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.EnterMailToName));
+            box.OKButton.Click += (o, e) =>
+            {
+                scene.MailComposeParcelDialog?.ComposeMail(box.InputTextBox.Text);
+                scene.InventoryDialog?.Show();
+                box.Dispose();
+            };
+            box.Show();
+        }
+
+        // S.MailSent：邮件发送成功 → 解锁背包全格 + 关寄包裹窗（旧客户端 GameScene.cs:6559 逐字）。
+        // Unity 无 BeltDialog（腰带未移植，同 DepositTradeItem 裁减），跳过腰带格解锁。
+        internal static void MailSent(S.MailSent p)
+        {
+            var scene = GameScene.Scene;
+            if (scene?.InventoryDialog == null) return;
+            for (int i = 0; i < scene.InventoryDialog.Grid.Length; i++)
+                if (scene.InventoryDialog.Grid[i].Locked)
+                    scene.InventoryDialog.Grid[i].Locked = false;
+            scene.MailComposeParcelDialog?.Hide();
+        }
+
+        // S.ParcelCollected：领取包裹结果三分支（旧客户端 GameScene.cs:6581 逐字）：
+        // -1 无包裹可领 / 0 全部已领 → 弹 MirMessageBox；1 领取成功 → 关读包裹窗。
+        internal static void ParcelCollected(S.ParcelCollected p)
+        {
+            var scene = GameScene.Scene;
+            switch (p.Result)
+            {
+                case -1:
+                    new MirMessageBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.NoParcelsToCollect), MirMessageBoxButtons.OK).Show();
+                    break;
+                case 0:
+                    new MirMessageBox(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.AllParcelsCollected), MirMessageBoxButtons.OK).Show();
+                    break;
+                case 1:
+                    scene?.MailReadParcelDialog?.Hide();
+                    break;
+            }
+        }
+
+        // S.MailCost：邮资回流 → 寄包裹窗可见时刷 ParcelCostLabel（旧客户端 GameScene.cs:6612 逐字；
+        // SoundManager 未移植，跳过金币音效）。
+        internal static void MailCost(S.MailCost p)
+        {
+            var dlg = GameScene.Scene?.MailComposeParcelDialog;
+            if (dlg == null || !dlg.Visible) return;
+            dlg.ParcelCostLabel.Text = p.Cost.ToString();
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1185,6 +1290,19 @@ namespace Crystal.Client.Rendering
                 scene.TradeDialog = trade;
                 var guest = new GuestTradeDialog { Parent = scene, Visible = false };
                 scene.GuestTradeDialog = guest;
+                // 邮件五窗（8-7-2）：常驻创建默认隐藏（同 NPCDialog 模式）。顺序契约：
+                // MailComposeParcelDialog ctor 读 InventoryDialog.Size.Width（须在 inv 之后建）；
+                // MailListDialog 行数据源 GameScene.User.Mail（S.ReceiveMail 排序后分发刷新）。
+                var mailList = new MailListDialog { Parent = scene, Visible = false };
+                scene.MailListDialog = mailList;
+                var composeLetter = new MailComposeLetterDialog { Parent = scene, Visible = false };
+                scene.MailComposeLetterDialog = composeLetter;
+                var composeParcel = new MailComposeParcelDialog { Parent = scene, Visible = false };
+                scene.MailComposeParcelDialog = composeParcel;
+                var readLetter = new MailReadLetterDialog { Parent = scene, Visible = false };
+                scene.MailReadLetterDialog = readLetter;
+                var readParcel = new MailReadParcelDialog { Parent = scene, Visible = false };
+                scene.MailReadParcelDialog = readParcel;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)
