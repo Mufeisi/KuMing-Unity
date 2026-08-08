@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第3项 增量2——商店买卖触控化（商店 8 格列表买卖/数量/购买按钮）。见任务 `8-3-2`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 增量1 NPC 对话已收口（8-3-1 ✅）。
+**当前在途**：阶段8 第3项 增量3——仓库存取触控化（仓库 10×16 网格存取/分页）。见任务 `8-3-3`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 增量1 NPC 对话已收口（8-3-1 ✅），第3项 增量2 商店买卖已收口（8-3-2 ✅）。
 
 ---
 
@@ -101,7 +101,7 @@
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | ✅ | 8-2-2 | 0.5d |
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | ✅ | 8-2-2 | 1d |
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | ✅ | 8-2-2 | 1d |
-| 8-3-2 | 商店买卖触控化 | 8·第3项 | 🔲 | 8-3-1 | 1d |
+| 8-3-2 | 商店买卖触控化 | 8·第3项 | ✅ | 8-3-1 | 1d |
 | 8-3-3 | 仓库存取触控化 | 8·第3项 | 🔲 | 8-3-1 | 0.5~1d |
 | 8-4-1 | 任务四窗触控化 | 8·第4项 | 🔲 | 8-3-1 | 1d |
 | 8-4-2 | 大地图触控化 | 8·第4项 | 🔲 | 8-4-1 | 0.5~1d |
@@ -259,12 +259,19 @@
 - 验收：真机点 NPC 对话完整流程。
 
 #### 8-3-2 商店买卖触控化
-状态：🔲｜预估：1d｜依赖：8-3-1
+状态：✅（2026-08-08）｜预估：1d｜依赖：8-3-1
 
 - 目标：商店 8 格列表买卖、数量、购买按钮触控。
-- 开发：`NPCGoodsDialog` 触控（BuyItem 按钮/数量）；复用 PC 迭代包3。
-- 测试：探针（选商品/数量/购买发包）。
-- 验证：探针 PASS + PC 回归 `net-npc.ps1` + 冒烟。
+- 开发：
+  - `GameSession`：补 `S.NewItemInfo` 派发（填 `ItemInfoList`，此前运行时为空）+ `S.NPCGoods` 派发 → `NpcGoods` handler（逐商品 `GetItemInfo` 解析 `Info`，未收录跳过；设 `NPCRate`；`NPCGoodsDialog.NewGoods` + `Show` 连带开背包）；`InitInGameDialogs` 常驻创建 `NPCGoodsDialog`（默认隐藏，同 NPCDialog 模式）。
+  - `MobileBootstrap` 移动守卫：`BackHandler` 商店关闭插入在 NPC 对话之前（顶层先关）；`uiOpen`/`PollJoystick bagOpen` 追加 `NPCGoodsDialog.Visible`（面板开时暂停摇杆/战斗/拾取）。
+  - `NPCGoodsDialog`/`MirGoodsCell` 复刻复用（PC 迭代包3）：点格选中→`BuyButton`→`C.BuyItem{ItemIndex=UniqueID, Count=maxQuantity, Type}`，`Count` 按 StackSize/金币/listing Count 三封顶（对齐旧客户端 BuyItem）；`CloseButton` 关闭。
+- 测试：`ShopVerify` 探针 9 用例（NPCGoods 分发+Info 解析+NPCRate+背包连带 / 未收录商品跳过不崩 / 点格选中+切换 / 单件 Count=1 / 叠放整组 Count=listing / 金币封顶 / StackSize 封顶 / 未选不发包 / 关闭隐藏）。
+- 验证：shopverify 9/9 PASS + 相关回归（npcverify 6/6、baginteract 7/7、equip 5/5）PASS。
+- 对照决策：
+  - **只做购买侧**。出售（`NPCDropDialog`）未移植 → 不在范围内（已知限制，后续迭代）。
+  - **数量选择沿用旧客户端最大可购**（`BuyItem` 三封顶），`MirAmountBox` 输入框不接入（WinForms 键盘 UX，裁剪注释已记录；SoftKeyboard 接线推迟）。
+  - 双点击判定用静态 `_lastClickTime` 跨 case 会误伤 → 探针 `CMain.Time` 全程单调递增（`+=10000`）规避。
 - 提交：`feat(阶段8): 商店买卖触控化`。
 - 验收：真机买药成功、金币扣除。
 

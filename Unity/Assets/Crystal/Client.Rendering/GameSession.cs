@@ -232,6 +232,14 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.UseItem:
                     UseItem((S.UseItem)p);
                     break;
+                case (short)ServerPacketIds.NewItemInfo:
+                    // 商店商品 Info 数据源（8-3-2）：S.NewItemInfo 单条物品信息入库（登录/进图服务端批量推送）。
+                    var nii = (S.NewItemInfo)p;
+                    if (nii.Info != null) GameScene.ItemInfoList.Add(nii.Info);
+                    break;
+                case (short)ServerPacketIds.NPCGoods:
+                    NpcGoods((S.NPCGoods)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -281,6 +289,43 @@ namespace Crystal.Client.Rendering
             scene.NPCDialog.NewText(p.Page);
             if (scene.InventoryDialog != null) scene.NPCDialog.Show();
             else scene.NPCDialog.Visible = true;
+        }
+
+        // 商店商品回流（8-3-2）：S.NPCGoods 商品列表 + 价格倍率 → NPCGoodsDialog.NewGoods 渲染 + Show
+        // （Show 连带打开背包，对齐旧客户端语义）。UserItem 反序列化后 Info 为空，逐条按 ItemIndex
+        // 从物品信息表（GameScene.ItemInfoList，S.NewItemInfo 填充）解析；未收录（表缺失该 Index）
+        // 跳过不渲染——AddGoods 会对 null Info 商品解引用 NRE，跳过与 MirGoodsCell null-Info 早退同源。
+        // NPCDialog/InventoryDialog 由 InitInGameDialogs 常驻，此处兜底懒建（探针直调）。internal：
+        // ShopVerify 探针直调测全链。
+        internal static void NpcGoods(S.NPCGoods p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            if (scene.NPCDialog == null)
+                scene.NPCDialog = new NPCDialog { Parent = scene, Visible = false };
+            if (scene.NPCGoodsDialog == null)
+                scene.NPCGoodsDialog = new NPCGoodsDialog(p.Type) { Parent = scene, Visible = false };
+
+            var goodsList = new List<UserItem>();
+            foreach (var g in p.List)
+            {
+                var info = GetItemInfo(g.ItemIndex);
+                if (info == null) continue;
+                g.Info = info;
+                goodsList.Add(g);
+            }
+
+            GameScene.NPCRate = p.Rate;
+            scene.NPCGoodsDialog.NewGoods(goodsList);
+            scene.NPCGoodsDialog.Show();
+        }
+
+        // 物品信息表按 Index 查找（旧客户端 GameScene.GetItemInfo 同源）。
+        static ItemInfo GetItemInfo(int index)
+        {
+            foreach (var info in GameScene.ItemInfoList)
+                if (info.Index == index) return info;
+            return null;
         }
 
         internal static void ObjectSpell(S.ObjectSpell p)
@@ -491,6 +536,10 @@ namespace Crystal.Client.Rendering
                 // （MirControl.Visible 默认 true），且 MapObject.cs NPC 移除会直接 Hide 它（NRE 兜底）。
                 var npc = new NPCDialog { Parent = scene, Visible = false };
                 scene.NPCDialog = npc;
+                // 商店对话框（8-3-2）：常驻创建默认隐藏（同 NPCDialog 模式）。运行时商店均为 Buy
+                // 面板（Craft/BuySub 裁剪未支持），PType 固定 Buy；NpcGoods 懒建兜底才用 p.Type。
+                var goods = new NPCGoodsDialog(PanelType.Buy) { Parent = scene, Visible = false };
+                scene.NPCGoodsDialog = goods;
             }
             catch (Exception ex)
             {
