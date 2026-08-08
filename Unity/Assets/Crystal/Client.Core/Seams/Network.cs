@@ -250,10 +250,16 @@ namespace Client.MirNetwork
                 return;
             }
 
-            while (_receiveList != null && !_receiveList.IsEmpty)
+            // 9-4 进图网络风暴分批：单帧最多处理 MaxPacketsPerFrame 个接收包（进图时服务器一次性
+            // 下发地图/对象数据几百包，全量处理单帧 200ms+ 卡顿 → 分帧渐进；FIFO 保序，稳定态队列
+            // 为空无影响，网络派发状态机不感知分批）。
+            const int MaxPacketsPerFrame = 60;
+            int handled = 0;
+            while (_receiveList != null && !_receiveList.IsEmpty && handled < MaxPacketsPerFrame)
             {
                 if (!_receiveList.TryDequeue(out Packet p) || p == null) continue;
                 OnPacket?.Invoke(p);
+                handled++;
             }
 
             // keepalive 由独立 Timer 驱动（见 SendKeepAlive），主循环仅做状态日志（真实时间节流，

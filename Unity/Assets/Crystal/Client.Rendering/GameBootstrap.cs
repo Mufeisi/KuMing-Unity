@@ -103,7 +103,8 @@ namespace Crystal.Client.Rendering
             if (Time.unscaledTime - _fpsLogAt >= 5.0)
             {
                 float fps = _fpsFrames / Mathf.Max(_fpsAccum, 0.0001f);
-                Debug.Log($"[pcplayer] fps={fps:F1}");
+                // 9-4 剖析：fps + 逻辑/渲染平均耗时（GameRuntime 累计）+ 本帧对象数
+                Debug.Log($"[pcplayer] perf fps={fps:F1} logic={GameRuntime.AvgLogicMs:F2}ms session={GameRuntime.AvgSessionMs:F2}ms objectsProc={GameRuntime.AvgObjectsMs:F2}ms render={GameRuntime.AvgRenderMs:F2}ms objs={GameRuntime.LastObjectDraws}");
                 _fpsAccum = 0; _fpsFrames = 0; _fpsLogAt = Time.unscaledTime;
             }
         }

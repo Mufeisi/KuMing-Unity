@@ -25,6 +25,13 @@ namespace Crystal.Client.Rendering
         public static float DrawDistanceScale = 1f;
         public static int LastObjectDraws; // 探针断言：本帧实际绘制对象数
         public static int FramesRendered;  // 渲染完成帧数（render-ready 判据：首帧完成即渲染就绪）
+        // 9-4 性能剖析：TickLogic/Render 每帧耗时累计（GameBootstrap.MaybeFpsLog 每 5s 输出均值）。
+        static double _logicMs, _renderMs, _sessionMs, _objectsMs;
+        static int _perfFrames;
+        public static double AvgLogicMs => _perfFrames > 0 ? _logicMs / _perfFrames : 0;
+        public static double AvgRenderMs => _perfFrames > 0 ? _renderMs / _perfFrames : 0;
+        public static double AvgSessionMs => _perfFrames > 0 ? _sessionMs / _perfFrames : 0;
+        public static double AvgObjectsMs => _perfFrames > 0 ? _objectsMs / _perfFrames : 0;
 
         // 探针路径：逻辑 + 渲染到显式 RT（batchmode 无相机，不存在相机清屏覆盖问题）。
         public static void Tick(RenderTexture target)
@@ -36,15 +43,21 @@ namespace Crystal.Client.Rendering
         // Player 壳路径：每帧逻辑推进（Update 调）；渲染走 RenderScreen（OnPostRender，相机渲染后才轮到，否则被相机清屏覆盖）。
         public static void TickLogic()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             if (GameSession.State == GameSessionState.Idle || GameSession.State == GameSessionState.Error) return;
             CMain.Time = _clock.ElapsedMilliseconds;
             GameSession.Process();
+            double sessionMs = sw.Elapsed.TotalMilliseconds;
             if (GameSession.User == null || GameSession.MapReader == null) return;
 
             // OffSet 为屏幕尺寸派生常量，先于对象 Process 设置（Monster/NPC DrawLocation 依赖 OffSetX/Y）。
             MapControl.OffSetX = ScreenW / 2 / MapControl.CellWidth;
             MapControl.OffSetY = ScreenH / 2 / MapControl.CellHeight - 1;
             ProcessObjects();
+            _sessionMs += sessionMs;
+            _objectsMs += sw.Elapsed.TotalMilliseconds - sessionMs;
+            _logicMs += sw.Elapsed.TotalMilliseconds;
+            _perfFrames++;
         }
 
         // Player 壳路径：屏幕渲染（相机 OnPostRender 调用，target=null 直渲后缓冲）。
@@ -74,6 +87,7 @@ namespace Crystal.Client.Rendering
 
         static void Render(RenderTexture target)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var user = GameSession.User;
             int cx = user.Movement.X, cy = user.Movement.Y;
             int offX = MapControl.OffSetX, offY = MapControl.OffSetY;
@@ -100,6 +114,7 @@ namespace Crystal.Client.Rendering
             LastObjectDraws = drawn;
             CrystalSpriteBatch.End();
             FramesRendered++;
+            _renderMs += sw.Elapsed.TotalMilliseconds;
         }
 
         // 跨帧缓存 libIndex 数组：同地图 cells 不变，避免每帧重建（G2 性能教训）。

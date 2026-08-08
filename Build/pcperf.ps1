@@ -57,9 +57,13 @@ try { Wait-Process -Id $client.Id -Timeout 30 -ErrorAction SilentlyContinue } ca
 if (-not $server.HasExited) { Stop-Process $server -Force }
 
 if ($crashed) { Write-Host "FAIL: crash"; exit 1 }
-$fps = @()
+$fps = @(); $logic = @(); $render = @(); $objects = @(); $session = @()
 if (Test-Path $playerLog) {
-    $fps = @(Select-String -Path $playerLog -Pattern "\[pcplayer\] fps=([0-9.]+)" | ForEach-Object { [double]$_.Matches[0].Groups[1].Value })
+    $fps = @(Select-String -Path $playerLog -Pattern "perf fps=([0-9.]+)" | ForEach-Object { [double]$_.Matches[0].Groups[1].Value })
+    $logic = @(Select-String -Path $playerLog -Pattern "logic=([0-9.]+)ms" | ForEach-Object { [double]$_.Matches[0].Groups[1].Value })
+    $session = @(Select-String -Path $playerLog -Pattern "session=([0-9.]+)ms" | ForEach-Object { [double]$_.Matches[0].Groups[1].Value })
+    $render = @(Select-String -Path $playerLog -Pattern "render=([0-9.]+)ms" | ForEach-Object { [double]$_.Matches[0].Groups[1].Value })
+    $objects = @(Select-String -Path $playerLog -Pattern "objs=(\d+)" | ForEach-Object { [int]$_.Matches[0].Groups[1].Value })
 }
 $enterLine = if (Test-Path $playerLog) { (Select-String -Path $playerLog -Pattern "\[pcplayer\] enter-game" | Select-Object -First 1) } else { $null }
 $enterAt = if ($enterLine) { $enterLine.LineNumber } else { -1 }
@@ -73,7 +77,11 @@ $p95 = if ($fps.Count -gt 1) {
     $sorted = $fps | Sort-Object
     [math]::Round($sorted[[math]::Floor($sorted.Count * 0.95)], 1)
 } else { -1 }
-$summary = "PC 性能基线（$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')）：fps avg=$avgFps min=$minFps p95=$p95（低=差）samples=$($fps.Count) 进图行距=$lineGap 挂机=$Seconds s"
+$avgLogic = if ($logic.Count -gt 0) { [math]::Round(($logic | Measure-Object -Average).Average, 2) } else { -1 }
+$avgRender = if ($render.Count -gt 0) { [math]::Round(($render | Measure-Object -Average).Average, 2) } else { -1 }
+$avgObjects = if ($objects.Count -gt 0) { [math]::Round(($objects | Measure-Object -Average).Average, 1) } else { -1 }
+$avgSession = if ($session.Count -gt 0) { [math]::Round(($session | Measure-Object -Average).Average, 2) } else { -1 }
+$summary = "PC 性能基线（$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')）：fps avg=$avgFps min=$minFps p95=$p95 logic=${avgLogic}ms session=${avgSession}ms render=${avgRender}ms objs=$avgObjects samples=$($fps.Count) 进图行距=$lineGap 挂机=$Seconds s"
 Set-Content $baseline $summary -Encoding UTF8
 Write-Host "  $summary"
 Write-Host "  baseline -> $baseline"
