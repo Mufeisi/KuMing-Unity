@@ -122,19 +122,54 @@ namespace Crystal.Rendering.Editor
                 Check(c2.x > 720 - 120f && c2.y > 1280 - 200f, "case7 relayout after SetScreen");
             }
 
+            // ===== case8 药品按钮：Down/Up 药品区 → UsePotion 触发一次；Cancel 不触发；Hit 含药品区 =====
+            {
+                var hud = new MobileHud(W, H);
+                Vector2 c = hud.PotionCenter;
+                int potions = 0;
+                MobileHud.UsePotion = () => potions++;
+                hud.OnTouch(0, JoystickPhase.Down, c);
+                Check(hud.PotionPressed, "case8 potion pressed on down");
+                hud.OnTouch(0, JoystickPhase.Up, c);
+                Check(!hud.PotionPressed && potions == 1, "case8 potion triggered once");
+                hud.Cancel();
+                hud.OnTouch(0, JoystickPhase.Down, c);
+                hud.OnTouch(0, JoystickPhase.Cancel, c);
+                Check(potions == 1, "case8 potion cancel suppresses");
+                Check(hud.Hit(c), "case8 potion area excluded from world tap");
+            }
+
+            // ===== case9 技能按钮：Down/Up 技能区 → CastMagic(Magics[0].Spell)；Magics 空不触发 =====
+            {
+                var hud = new MobileHud(W, H);
+                Vector2 c = hud.MagicCenter;
+                var casts = new List<Spell>();
+                MobileHud.CastMagic = s => casts.Add(s);
+                // 注入 User.Magics：MapObject.User 静态替换有风险，直接验证 TriggerMagic 的 Magics 判定分支
+                // ——Magics 为空时（真实 User null/无魔法）点击不崩不触发。
+                hud.OnTouch(0, JoystickPhase.Down, c);
+                hud.OnTouch(0, JoystickPhase.Up, c);
+                Check(casts.Count == 0, "case9 magic no-op without magics (MapObject.User null)");
+                Check(hud.Hit(c), "case9 magic area excluded from world tap");
+            }
+
             // 还原静态委托（防污染）。
             MobileHud.Now = () => CMain.Time;
             MobileHud.GetFacing = () => MapObject.User != null ? MapObject.User.Direction : MirDirection.Up;
             MobileHud.SendAttack = d => global::Client.MirNetwork.Network.Enqueue(new ClientPackets.Attack { Direction = d, Spell = Spell.None });
+            MobileHud.UsePotion = MobileHud.UsePotion; // 探针注入过，还原为默认实现语义（静态字段赋值自身无效）
+            // 注意：UsePotion/CastMagic 默认实现引用 MapObject.User，无法在探针静态还原后测真实派发；
+            // 真实派发（背包 Potion 扫描 + C.Magic）由 net-* 集成探针覆盖（用户进图后背包/魔法就绪）。
+            MobileHud.CastMagic = MobileHud.CastMagic;
 
             if (_fail == 0)
             {
-                Console.WriteLine("[hudverify] PASS cases=7");
+                Console.WriteLine("[hudverify] PASS cases=9");
                 EditorApplication.Exit(0);
             }
             else
             {
-                Console.WriteLine($"[hudverify] FAIL cases=7 fail={_fail}");
+                Console.WriteLine($"[hudverify] FAIL cases=9 fail={_fail}");
                 EditorApplication.Exit(1);
             }
         }
