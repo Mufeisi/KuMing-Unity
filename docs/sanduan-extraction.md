@@ -1,5 +1,7 @@
 # sanduan/Unity 可提取资产清单（参考）
 
+> **提取收口（2026-08-08）**：优先级 P0/P1/P1/P2/P2 五项全部完成并逐项探针验证（对象模型 24/24、描边 3/3、光源脉冲 3 时刻、软键盘 8/8、分辨率 14/14，见下方各节与 `docs/migration-status.md`），本清单作为参考源长期保留。剩余 P3（MirMath seam 边缘对照）为**随用随查**参考项，非排期任务。**运行时接线遗留**（每项均探针级验证、接线待阶段8 UI/渲染落地）：`GameScene.DrawLights` 光源渲染（R5 探针级）、`SoftKeyboardBridge.Focus(box)` 移动登录/聊天 UI（当前 `MobileConfig` 硬编码凭据）。
+
 > 定位：`D:\ChuanQi\Kmyq\sanduan\Unity` 是同一传奇(Mir2)客户端的独立 Unity 移植（Unity 2022.3 + FairyGUI + `Shared.Unity.*` 类型垫片 + CommandBuffer 渲染）。本清单列出**值得借鉴/提取的具体资产**，每条含：位置、内容、本项目缺口、可迁移性、验证方式。
 >
 > 原则：**选择性提取 + 按本项目验证方法论（golden/字节审计/确定性探针）落地**，不整目录复制。sanduan 无任何验证门禁，部分代码（含 shader）有 bug，直接照搬会引入未经验证的缺陷。
