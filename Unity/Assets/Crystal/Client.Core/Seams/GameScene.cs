@@ -74,9 +74,17 @@ namespace Client.MirScenes
         // 英雄系统（旧客户端 GameScene.cs 同源）：HeroDialog=英雄装备/技能（CharacterDialog
         // HeroEquipment 分支）、HeroInventoryDialog=英雄背包、HeroSpawnState=英雄当前状态、
         // MaximumHeroCount=可建英雄数、HeroStorage=英雄列表快照（HeroManageDialog 读写）。
+        // HeroBehaviourPanel/HeroMenuPanel/HeroManageDialog 由 InitInGameDialogs 常驻创建
+        // （8-8-1；旧版 GameScene ctor 建），HeroDialog/HeroInventoryDialog/HeroBeltDialog/
+        // HeroBuffsDialog 依赖 Hero 由 S.HeroInformation 创建（旧版逐字）。
         public Dialogs.CharacterDialog HeroDialog;
         public Dialogs.HeroInventoryDialog HeroInventoryDialog;
+        public Dialogs.HeroBeltDialog HeroBeltDialog;
+        public Dialogs.HeroBehaviourPanel HeroBehaviourPanel;
+        public Dialogs.HeroMenuPanel HeroMenuPanel;
+        public Dialogs.HeroManageDialog HeroManageDialog;
         public HeroSpawnState HeroSpawnState;
+        public bool HasHero;
         public static int MaximumHeroCount;
         public static ClientHeroInformation[] HeroStorage;
         public Dialogs.SkillBarDialog SkillBarDialog;

@@ -54,6 +54,7 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _mail = new MobileBag(1280, 720);   // 邮件按钮（8-7-2）：行会下方开/关邮件列表（粉 tint）
         readonly MobileBag _market = new MobileBag(1280, 720); // 拍卖行按钮（8-7-3）：邮件下方开/关拍卖行面板（橙 tint）
         readonly MobileBag _gameShop = new MobileBag(1280, 720); // 商城按钮（8-7-4）：拍卖行下方开/关商城面板（青绿 tint）
+        readonly MobileBag _hero = new MobileBag(1280, 720); // 英雄按钮（8-8-1）：左缘顶部开/关英雄菜单（HeroMenuPanel，白 tint）
         readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
         Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex, _groupTex, _friendTex, _guildTex, _mailTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
@@ -139,6 +140,14 @@ namespace Crystal.Client.Rendering
             _gameShop.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 9));
             _gameShop.TintOpen = new Color(0.4f, 0.9f, 0.85f, 0.95f);
             _gameShop.TintClosed = new Color(0.2f, 0.6f, 0.55f, 0.95f);
+
+            // 开/关英雄菜单（HeroMenuPanel：技能/背包/装备三按钮）。右列已满（第 10 列 720 高即超屏）
+            // → 左缘顶部锚定（LeftAnchored，x=90 距左缘、y=100 距顶，避开顶部血条与底部聊天按钮）。
+            _hero.OnToggle = ToggleHero;
+            _hero.LeftAnchored = true;
+            _hero.SetMargin(new Vector2(90f, 100f));
+            _hero.TintOpen = new Color(1f, 1f, 1f, 0.95f);
+            _hero.TintClosed = new Color(0.75f, 0.75f, 0.75f, 0.95f);
             // 聊天（8-5-2）：底部左缘聊天/频道按钮。OnOpenInput=开输入框（首次开注入当前频道前缀）
             // + 弹软键盘；OnChannel=切换频道前缀（输入框开着则重写文本前缀并重开软键盘使初始文本生效，
             // 服务器按 !/@ 前缀分频道）。发送走软键盘 Enter（SoftKeyboardBridge Submitted → ChatTextBox_KeyPress
@@ -194,6 +203,13 @@ namespace Crystal.Client.Rendering
                 // 商城（8-7-4）：独立顶层窗（无需背包），Back 在拍卖行之后关闭。
                 var gameShopDlg = scene != null ? scene.GameShopDialog : null;
                 if (gameShopDlg != null && gameShopDlg.Visible) { gameShopDlg.Hide(); return true; }
+                // 英雄（8-8-1）：HeroMenuPanel 优先（入口弹层），其次 HeroManageDialog/HeroInventoryDialog。
+                var heroMenu = scene != null ? scene.HeroMenuPanel : null;
+                if (heroMenu != null && heroMenu.Visible) { heroMenu.Visible = false; return true; }
+                var heroInv = scene != null ? scene.HeroInventoryDialog : null;
+                if (heroInv != null && heroInv.Visible) { heroInv.Hide(); return true; }
+                var heroManage = scene != null ? scene.HeroManageDialog : null;
+                if (heroManage != null && heroManage.Visible) { heroManage.Hide(); return true; }
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
                 // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
@@ -284,7 +300,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true) || (uiSc.TradeDialog?.Visible == true) || (uiSc.MailListDialog?.Visible == true) || (uiSc.MailComposeLetterDialog?.Visible == true) || (uiSc.MailComposeParcelDialog?.Visible == true) || (uiSc.MailReadLetterDialog?.Visible == true) || (uiSc.MailReadParcelDialog?.Visible == true) || (uiSc.TrustMerchantDialog?.Visible == true) || (uiSc.GameShopDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true) || (uiSc.QuestDiaryDialog?.Visible == true) || (uiSc.QuestListDialog?.Visible == true) || (uiSc.QuestDetailDialog?.Visible == true) || (uiSc.BigMapDialog?.Visible == true) || (uiSc.GroupDialog?.Visible == true) || (uiSc.FriendDialog?.Visible == true) || (uiSc.GuildDialog?.Visible == true) || (uiSc.TradeDialog?.Visible == true) || (uiSc.MailListDialog?.Visible == true) || (uiSc.MailComposeLetterDialog?.Visible == true) || (uiSc.MailComposeParcelDialog?.Visible == true) || (uiSc.MailReadLetterDialog?.Visible == true) || (uiSc.MailReadParcelDialog?.Visible == true) || (uiSc.TrustMerchantDialog?.Visible == true) || (uiSc.GameShopDialog?.Visible == true) || (uiSc.HeroMenuPanel?.Visible == true) || (uiSc.HeroManageDialog?.Visible == true) || (uiSc.HeroInventoryDialog?.Visible == true));
             // 大地图视口点击已设自动寻路（TouchInputAdapter 点击链 OnMouseClick）→ 关地图窗，在世界走位
             // （地图窗遮挡无用，且 uiOpen 门控会暂停寻路 tick）。仅检测 AutoPath 上升沿（false→true），
             // 避免寻路激活中重开地图被本帧立刻关闭。
@@ -352,6 +368,8 @@ namespace Crystal.Client.Rendering
                 _market.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_gameShop.ScreenW != GameRuntime.ScreenW || _gameShop.ScreenH != GameRuntime.ScreenH)
                 _gameShop.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_hero.ScreenW != GameRuntime.ScreenW || _hero.ScreenH != GameRuntime.ScreenH)
+                _hero.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -376,6 +394,9 @@ namespace Crystal.Client.Rendering
             var readParcel = scene != null ? scene.MailReadParcelDialog : null;
             var market = scene != null ? scene.TrustMerchantDialog : null;
             var gameShop = scene != null ? scene.GameShopDialog : null;
+            var heroMenu = scene != null ? scene.HeroMenuPanel : null;
+            var heroManage = scene != null ? scene.HeroManageDialog : null;
+            var heroInv = scene != null ? scene.HeroInventoryDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -426,6 +447,9 @@ namespace Crystal.Client.Rendering
             if (readParcel != null && readParcel.Visible) UiText.WarmTree(readParcel);
             if (market != null && market.Visible) UiText.WarmTree(market); // 拍卖行（8-7-3）：筛选树/行标签/搜索框批前合帧
             if (gameShop != null && gameShop.Visible) UiText.WarmTree(gameShop); // 商城（8-7-4）：商品格/价格/库存/分页标签批前合帧
+            if (heroMenu != null && heroMenu.Visible) UiText.WarmTree(heroMenu); // 英雄（8-8-1）：菜单三按钮 Hint
+            if (heroManage != null && heroManage.Visible) UiText.WarmTree(heroManage);
+            if (heroInv != null && heroInv.Visible) UiText.WarmTree(heroInv);
             // 备注浮窗（8-6-2）：MemoDialog 为好友面板独立子窗（Title 209），开才预热字形（多行文本框）。
             var memo = scene != null ? scene.MemoDialog : null;
             if (memo != null && memo.Visible) UiText.WarmTree(memo);
@@ -464,6 +488,9 @@ namespace Crystal.Client.Rendering
             if (readParcel != null && readParcel.Visible) readParcel.Draw();
             if (market != null && market.Visible) market.Draw(); // 拍卖行（8-7-3）：与组队/好友同层（背包面板之上）
             if (gameShop != null && gameShop.Visible) gameShop.Draw(); // 商城（8-7-4）：独立顶层窗
+            if (heroMenu != null && heroMenu.Visible) heroMenu.Draw();
+            if (heroManage != null && heroManage.Visible) heroManage.Draw();
+            if (heroInv != null && heroInv.Visible) heroInv.Draw();
             if (memo != null && memo.Visible) memo.Draw(); // 备注浮窗（8-6-2）：好友子窗最顶层
             if (modalControls != null)
                 for (int i = 0; i < modalControls.Count; i++)
@@ -482,6 +509,7 @@ namespace Crystal.Client.Rendering
             _mail.Render(_mailTex);
             _market.Render(_bagTex);
             _gameShop.Render(_bagTex);
+            _hero.Render(_bagTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -568,7 +596,7 @@ namespace Crystal.Client.Rendering
             var friend = scene != null ? scene.FriendDialog : null;
             var guild = scene != null ? scene.GuildDialog : null;
             var tradeDlg = scene != null ? scene.TradeDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible) || (tradeDlg != null && tradeDlg.Visible) || (scene != null && scene.MailListDialog != null && scene.MailListDialog.Visible) || (scene != null && scene.MailComposeLetterDialog != null && scene.MailComposeLetterDialog.Visible) || (scene != null && scene.MailComposeParcelDialog != null && scene.MailComposeParcelDialog.Visible) || (scene != null && scene.MailReadLetterDialog != null && scene.MailReadLetterDialog.Visible) || (scene != null && scene.MailReadParcelDialog != null && scene.MailReadParcelDialog.Visible) || (scene != null && scene.TrustMerchantDialog != null && scene.TrustMerchantDialog.Visible) || (scene != null && scene.GameShopDialog != null && scene.GameShopDialog.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible) || (qdia != null && qdia.Visible) || (qlist != null && qlist.Visible) || (qdet != null && qdet.Visible) || (bigMap != null && bigMap.Visible) || (group != null && group.Visible) || (friend != null && friend.Visible) || (guild != null && guild.Visible) || (tradeDlg != null && tradeDlg.Visible) || (scene != null && scene.MailListDialog != null && scene.MailListDialog.Visible) || (scene != null && scene.MailComposeLetterDialog != null && scene.MailComposeLetterDialog.Visible) || (scene != null && scene.MailComposeParcelDialog != null && scene.MailComposeParcelDialog.Visible) || (scene != null && scene.MailReadLetterDialog != null && scene.MailReadLetterDialog.Visible) || (scene != null && scene.MailReadParcelDialog != null && scene.MailReadParcelDialog.Visible) || (scene != null && scene.TrustMerchantDialog != null && scene.TrustMerchantDialog.Visible) || (scene != null && scene.GameShopDialog != null && scene.GameShopDialog.Visible) || (scene != null && scene.HeroMenuPanel != null && scene.HeroMenuPanel.Visible) || (scene != null && scene.HeroManageDialog != null && scene.HeroManageDialog.Visible) || (scene != null && scene.HeroInventoryDialog != null && scene.HeroInventoryDialog.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
@@ -589,7 +617,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui) || _friend.OnTouch(id, ph, ui) || _guild.OnTouch(id, ph, ui) || _mail.OnTouch(id, ph, ui) || _market.OnTouch(id, ph, ui) || _gameShop.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队/好友/行会/邮件/拍卖行/商城按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui) || _group.OnTouch(id, ph, ui) || _friend.OnTouch(id, ph, ui) || _guild.OnTouch(id, ph, ui) || _mail.OnTouch(id, ph, ui) || _market.OnTouch(id, ph, ui) || _gameShop.OnTouch(id, ph, ui) || _hero.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天/组队/好友/行会/邮件/拍卖行/商城/英雄按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
@@ -1031,6 +1059,57 @@ namespace Crystal.Client.Rendering
                 Debug.LogError($"[mobile] gameshop-toggle {ex.GetType().Name}: {ex.Message}");
             }
             Debug.Log($"[mobile] gameshop-{(open ? "open" : "close")} visible={shop.Visible}");
+        }
+
+        // 英雄菜单开/关（8-8-1）：切换 HeroMenuPanel.Visible（入口弹层：技能/背包/装备三按钮，
+        // 旧版挂 MainDialog 由 HeroMenuButton 开，移动端用左缘按钮）。无英雄（Hero null）时不弹
+        // （服务器先推 S.HeroInformation 才有英雄）。开→互斥关背包/装备/组队/好友/行会/邮件/
+        // 拍卖行/商城面板 + Cancel 摇杆/HUD/拾取/寻路。关→仅藏菜单（子面板由 Back/按钮各自关）。
+        void ToggleHero(bool open)
+        {
+            var scene = GameScene.Scene;
+            var menu = scene != null ? scene.HeroMenuPanel : null;
+            if (menu == null) return;
+            try
+            {
+                if (open)
+                {
+                    if (GameScene.Hero == null) return; // 无英雄不弹（S.HeroInformation 未到/未创建英雄）
+                    if (!menu.Visible)
+                    {
+                        var inv = scene != null ? scene.InventoryDialog : null;
+                        if (inv != null && inv.Visible) inv.Hide();
+                        var chr = scene != null ? scene.CharacterDialog : null;
+                        if (chr != null && chr.Visible) chr.Hide();
+                        var group = scene != null ? scene.GroupDialog : null;
+                        if (group != null && group.Visible) group.Hide();
+                        var friend = scene != null ? scene.FriendDialog : null;
+                        if (friend != null && friend.Visible) friend.Hide();
+                        var guild = scene != null ? scene.GuildDialog : null;
+                        if (guild != null && guild.Visible) guild.Hide();
+                        var mail = scene != null ? scene.MailListDialog : null;
+                        if (mail != null && mail.Visible) mail.Hide();
+                        var market = scene != null ? scene.TrustMerchantDialog : null;
+                        if (market != null && market.Visible) market.Hide();
+                        var shop = scene != null ? scene.GameShopDialog : null;
+                        if (shop != null && shop.Visible) shop.Hide();
+                        menu.Visible = true;
+                        _joystick.Cancel();
+                        _hud.Cancel();
+                        _pickup.Cancel();
+                        _autoPath.Cancel();
+                    }
+                }
+                else
+                {
+                    menu.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] hero-toggle {ex.GetType().Name}: {ex.Message}");
+            }
+            Debug.Log($"[mobile] hero-{(open ? "open" : "close")} visible={menu.Visible}");
         }
 
         // 瞬态模态查找（8-6-1）：MirMessageBox/MirInputBox 挂 scene.Controls 树且 Modal=true 阻断下层。

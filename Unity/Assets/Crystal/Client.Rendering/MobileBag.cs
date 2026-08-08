@@ -26,6 +26,9 @@ namespace Crystal.Client.Rendering
         // 开/关 tint（实例可覆写；背包=黄，装备=绿，E2E 扫描区分两按钮）。
         public Color TintOpen = new Color(1f, 0.85f, 0.3f, 0.95f);
         public Color TintClosed = new Color(0.95f, 0.62f, 0.2f, 0.95f);
+        // 左缘锚定（8-8-1 英雄按钮）：右侧按钮列已满（第 10 列 720 高即超屏），英雄入口放左缘
+        // 顶部（x=Margin.x 距左缘，y=Margin.y 距顶）。默认 false=右上角锚定（现有语义不变）。
+        public bool LeftAnchored;
 
         Rect _rect;
         bool _pressed;
@@ -54,7 +57,12 @@ namespace Crystal.Client.Rendering
 
         // 右上角锚定重算：右/顶安全区 inset 内缩（刘海顶→按钮下移、Home indicator/圆角右→内缩）。
         // 派生按钮（装备/任务/地图 SetMargin 下移）继承本方法 → 整列同步偏移。SafeArea 默认全屏 inset=0 → 布局不变。
-        void Recompute() => _rect = new Rect(ScreenW - ButtonW - Margin.x - SafeArea.Right, Margin.y + SafeArea.Top, ButtonW, ButtonH);
+        // 左缘锚定（LeftAnchored）：x=Margin.x 距左缘（左/顶安全区 inset 内缩），英雄按钮专用。
+        void Recompute()
+        {
+            if (LeftAnchored) _rect = new Rect(Margin.x + SafeArea.Left, Margin.y + SafeArea.Top, ButtonW, ButtonH);
+            else _rect = new Rect(ScreenW - ButtonW - Margin.x - SafeArea.Right, Margin.y + SafeArea.Top, ButtonW, ButtonH);
+        }
 
         public Rect ButtonRect => _rect;
         public bool HitTest(Vector2 pos) => _rect.Contains(pos);

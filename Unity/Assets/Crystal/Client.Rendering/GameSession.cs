@@ -378,6 +378,48 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.GameShopStock:
                     GameShopStock((S.GameShopStock)p);
                     break;
+                case (short)ServerPacketIds.HeroInformation:
+                    HeroInformation((S.HeroInformation)p);
+                    break;
+                case (short)ServerPacketIds.ManageHeroes:
+                    ManageHeroes((S.ManageHeroes)p);
+                    break;
+                case (short)ServerPacketIds.ChangeHero:
+                    ChangeHero((S.ChangeHero)p);
+                    break;
+                case (short)ServerPacketIds.UpdateHeroSpawnState:
+                    UpdateHeroSpawnState((S.UpdateHeroSpawnState)p);
+                    break;
+                case (short)ServerPacketIds.UnlockHeroAutoPot:
+                    UnlockHeroAutoPot((S.UnlockHeroAutoPot)p);
+                    break;
+                case (short)ServerPacketIds.SetAutoPotValue:
+                    SetAutoPotValue((S.SetAutoPotValue)p);
+                    break;
+                case (short)ServerPacketIds.SetAutoPotItem:
+                    SetAutoPotItem((S.SetAutoPotItem)p);
+                    break;
+                case (short)ServerPacketIds.SetHeroBehaviour:
+                    SetHeroBehaviour((S.SetHeroBehaviour)p);
+                    break;
+                case (short)ServerPacketIds.TakeBackHeroItem:
+                    TakeBackHeroItem((S.TakeBackHeroItem)p);
+                    break;
+                case (short)ServerPacketIds.TransferHeroItem:
+                    TransferHeroItem((S.TransferHeroItem)p);
+                    break;
+                case (short)ServerPacketIds.HeroHealthChanged:
+                    HeroHealthChanged((S.HeroHealthChanged)p);
+                    break;
+                case (short)ServerPacketIds.GainHeroExperience:
+                    GainHeroExperience((S.GainHeroExperience)p);
+                    break;
+                case (short)ServerPacketIds.HeroLevelChanged:
+                    HeroLevelChanged((S.HeroLevelChanged)p);
+                    break;
+                case (short)ServerPacketIds.HeroBaseStatsInfo:
+                    HeroBaseStatsInfo((S.HeroBaseStatsInfo)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -1139,6 +1181,200 @@ namespace Crystal.Client.Rendering
             GameScene.Scene?.GameShopStock(p);
         }
 
+        // ── 英雄系统（8-8-1）──
+
+        // S.HeroInformation：英雄信息（服务器 StartGame 后推）→ 建 GameScene.Hero + 英雄控件集
+        // （HeroDialog=CharacterDialog(HeroEquipment) 依赖 Hero 故此处建，对齐旧客户端逐字；
+        // HeroMenuPanel/HeroBehaviourPanel/HeroManageDialog 旧版在 GameScene ctor 建，本项目
+        // InitInGameDialogs 统一常驻——见 init 段）。AutoPot/HPItem/MPItem 同步 + 状态条刷新 +
+        // RefreshStats。
+        internal static void HeroInformation(S.HeroInformation p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+
+            var hero = new UserHeroObject(p.ObjectID);
+            hero.Load(p);
+            hero.AutoPot = p.AutoPot;
+            hero.AutoHPPercent = p.AutoHPPercent;
+            hero.AutoMPPercent = p.AutoMPPercent;
+            if (p.HPItemIndex > 0) hero.HPItem[0] = new UserItem(GetItemInfo(p.HPItemIndex));
+            if (p.MPItemIndex > 0) hero.MPItem[0] = new UserItem(GetItemInfo(p.MPItemIndex));
+            GameScene.Hero = hero;
+            MapObject.Hero = hero; // MirItemCell.SlotList（HeroEquipment/HeroInventory 分支）读 MapObject.Hero
+
+            scene.HeroDialog = new CharacterDialog(MirGridType.HeroEquipment, hero) { Parent = scene, Visible = false };
+            scene.HeroInventoryDialog = new HeroInventoryDialog { Parent = scene };
+            scene.HeroBeltDialog = new HeroBeltDialog { Parent = scene };
+            scene.HeroBuffsDialog = new BuffDialog
+            {
+                Parent = scene,
+                Visible = true,
+                Location = new MPoint(Settings.ScreenWidth - 170, 80),
+                GetExpandedParameter = () => Settings.ExpandedBuffWindow,
+                SetExpandedParameter = (value) => Settings.ExpandedBuffWindow = value,
+            };
+
+            hero.RefreshStats();
+        }
+
+        // S.ManageHeroes：英雄列表回声 → HeroStorage 快照 + 上限 + 当前英雄 + Show（旧版逐字）。
+        // HeroStorage 定长 8（HeroManageDialog.RefreshInterface 循环 Avatars[8] 读 HeroStorage[i]，
+        // 按 p.Heroes.Length 建数组会越界）——旧版 GameScene 定长数组 + AddHeroInformation 按 index 填。
+        internal static void ManageHeroes(S.ManageHeroes p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || scene.HeroManageDialog == null) return;
+            if (GameScene.HeroStorage == null || GameScene.HeroStorage.Length != 8)
+                GameScene.HeroStorage = new ClientHeroInformation[8];
+            Array.Clear(GameScene.HeroStorage, 0, GameScene.HeroStorage.Length);
+            if (p.Heroes != null)
+            {
+                for (int i = 0; i < p.Heroes.Length && i < GameScene.HeroStorage.Length; i++)
+                    GameScene.HeroStorage[i] = p.Heroes[i];
+            }
+            GameScene.MaximumHeroCount = p.MaximumCount;
+            scene.HeroManageDialog.SetCurrentHero(p.CurrentHero);
+            scene.HeroManageDialog.Show();
+        }
+
+        // S.ChangeHero：切换英雄回声 → HeroStorage 交换（旧版逐字）。
+        internal static void ChangeHero(S.ChangeHero p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || scene.HeroManageDialog == null || GameScene.HeroStorage == null) return;
+            var temp = GameScene.HeroStorage[p.FromIndex];
+            GameScene.HeroStorage[p.FromIndex] = scene.HeroManageDialog.CurrentAvatar.Info;
+            scene.HeroManageDialog.SetCurrentHero(temp);
+            scene.HeroManageDialog.RefreshInterface();
+        }
+
+        // S.UpdateHeroSpawnState：英雄召唤状态 → HeroSpawnState/HasHero + 面板显隐。
+        // state<Summoned 时旧版 Dispose 英雄对话框；本项目常驻模式改为 Hide（重召唤后对话框
+        // 仍在，服务器不重推 HeroInformation）。HeroBuffsDialog 不随状态 Hide：其 _buffCountLabel
+        // Sort=true 触发 MirControl.OnVisibleChanged 的 Parent.Controls.Remove/Add 修改正在枚举
+        // 的集合（8-8-1 探针实证），且 HUD 常驻窗语义无需随召唤状态隐藏。
+        internal static void UpdateHeroSpawnState(S.UpdateHeroSpawnState p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            scene.HeroSpawnState = p.State;
+            scene.HasHero = p.State > HeroSpawnState.None;
+
+            if (scene.HeroBehaviourPanel != null)
+                scene.HeroBehaviourPanel.Visible = p.State > HeroSpawnState.Unsummoned;
+            if (scene.HeroMenuPanel != null)
+                scene.HeroMenuPanel.Visible = scene.HeroMenuPanel.Visible && scene.HasHero;
+
+            if (p.State < HeroSpawnState.Summoned)
+            {
+                if (scene.HeroDialog != null) scene.HeroDialog.Hide();
+                if (scene.HeroInventoryDialog != null) scene.HeroInventoryDialog.Hide();
+                if (scene.HeroBeltDialog != null) scene.HeroBeltDialog.Hide();
+            }
+        }
+
+        // S.UnlockHeroAutoPot（空包）：解锁自动喝药（旧版 UnlockHeroAutoPot(true) 逐字）。
+        internal static void UnlockHeroAutoPot(S.UnlockHeroAutoPot p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Hero.AutoPot = true;
+            GameScene.Scene?.HeroInventoryDialog?.RefreshInterface();
+        }
+
+        // S.SetAutoPotValue：自动喝药阈值回声（旧版逐字）。
+        internal static void SetAutoPotValue(S.SetAutoPotValue p)
+        {
+            if (GameScene.Hero == null) return;
+            if (p.Stat == Stat.HP) GameScene.Hero.AutoHPPercent = p.Value;
+            else GameScene.Hero.AutoMPPercent = p.Value;
+            GameScene.Scene?.HeroInventoryDialog?.RefreshInterface();
+        }
+
+        // S.SetAutoPotItem：自动喝药绑定物品回声（旧版逐字）。
+        internal static void SetAutoPotItem(S.SetAutoPotItem p)
+        {
+            if (GameScene.Hero == null) return;
+            if (p.Grid == MirGridType.HeroHPItem)
+                GameScene.Hero.HPItem[0] = p.ItemIndex > 0 ? new UserItem(GetItemInfo(p.ItemIndex)) : null;
+            else
+                GameScene.Hero.MPItem[0] = p.ItemIndex > 0 ? new UserItem(GetItemInfo(p.ItemIndex)) : null;
+        }
+
+        // S.SetHeroBehaviour：英雄行为模式回声（旧版逐字）。
+        internal static void SetHeroBehaviour(S.SetHeroBehaviour p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Scene?.HeroBehaviourPanel?.UpdateBehaviour(p.Behaviour);
+        }
+
+        // S.TakeBackHeroItem/S.TransferHeroItem：英雄↔主背包物品转移回声。Unity 无 BeltDialog
+        // → From/To < BeltIdx 腰带格跳过（裁剪注释）；HeroBeltIdx 段走 HeroBeltDialog.Grid。
+        static void ApplyHeroTransfer(MirItemCell fromCell, MirItemCell toCell, bool success)
+        {
+            if (toCell == null || fromCell == null) return;
+            toCell.Locked = false;
+            fromCell.Locked = false;
+            if (!success) return;
+            toCell.Item = fromCell.Item;
+            fromCell.Item = null;
+            MapObject.User.RefreshStats();
+            GameScene.Hero?.RefreshStats();
+        }
+
+        internal static void TakeBackHeroItem(S.TakeBackHeroItem p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            MirItemCell fromCell = p.From < MapObject.User.HeroBeltIdx ? scene.HeroBeltDialog?.Grid[p.From] : scene.HeroInventoryDialog?.Grid[p.From - MapObject.User.HeroBeltIdx];
+            MirItemCell toCell = p.To < MapObject.User.BeltIdx ? null : scene.InventoryDialog.Grid[p.To - MapObject.User.BeltIdx];
+            ApplyHeroTransfer(fromCell, toCell, p.Success);
+        }
+
+        internal static void TransferHeroItem(S.TransferHeroItem p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            MirItemCell fromCell = p.From < MapObject.User.BeltIdx ? null : scene.InventoryDialog.Grid[p.From - MapObject.User.BeltIdx];
+            MirItemCell toCell = p.To < MapObject.User.HeroBeltIdx ? scene.HeroBeltDialog?.Grid[p.To] : scene.HeroInventoryDialog?.Grid[p.To - MapObject.User.HeroBeltIdx];
+            ApplyHeroTransfer(fromCell, toCell, p.Success);
+        }
+
+        // S.HeroHealthChanged：英雄 HP/MP 同步（旧版逐字）。
+        internal static void HeroHealthChanged(S.HeroHealthChanged p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Hero.HP = p.HP;
+            GameScene.Hero.MP = p.MP;
+            GameScene.Hero.PercentHealth = (byte)(GameScene.Hero.HP / (float)GameScene.Hero.Stats[Stat.HP] * 100);
+            GameScene.Hero.PercentMana = (byte)(GameScene.Hero.MP / (float)GameScene.Hero.Stats[Stat.MP] * 100);
+        }
+
+        // S.GainHeroExperience：英雄经验（系统提示 + 累加，旧版逐字）。
+        internal static void GainHeroExperience(S.GainHeroExperience p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Hero.Experience += p.Amount;
+        }
+
+        // S.HeroLevelChanged：英雄升级（等级/经验 + RefreshStats，旧版逐字）。
+        internal static void HeroLevelChanged(S.HeroLevelChanged p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Hero.Level = p.Level;
+            GameScene.Hero.Experience = p.Experience;
+            GameScene.Hero.MaxExperience = p.MaxExperience;
+            GameScene.Hero.RefreshStats();
+        }
+
+        // S.HeroBaseStatsInfo：英雄基础属性（旧版逐字）。
+        internal static void HeroBaseStatsInfo(S.HeroBaseStatsInfo p)
+        {
+            if (GameScene.Hero == null) return;
+            GameScene.Hero.CoreStats = p.Stats;
+            GameScene.Hero.RefreshStats();
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1430,6 +1666,17 @@ namespace Crystal.Client.Rendering
                 // 注释；会话清空在 S.StartGame(Result=4) 分支）。分类/分页/搜索/支付勾选均本地过滤。
                 var gameShop = new GameShopDialog { Parent = scene, Visible = false };
                 scene.GameShopDialog = gameShop;
+                // 英雄面板（8-8-1）：HeroMenuPanel（入口弹层三按钮：技能/背包/装备）+
+                // HeroBehaviourPanel（行为模式，旧版挂 GameScene）+ HeroManageDialog（英雄管理）
+                // 常驻创建默认隐藏（旧版 GameScene ctor 同款）。HeroDialog/HeroInventoryDialog/
+                // HeroBeltDialog/HeroBuffsDialog 依赖 GameScene.Hero → 由 S.HeroInformation 创建
+                // （旧版逐字，服务器 StartGame 后推）。
+                var heroMenu = new HeroMenuPanel(scene) { Visible = false };
+                scene.HeroMenuPanel = heroMenu;
+                var heroBehaviour = new HeroBehaviourPanel { Parent = scene, Visible = false };
+                scene.HeroBehaviourPanel = heroBehaviour;
+                var heroManage = new HeroManageDialog { Parent = scene, Visible = false };
+                scene.HeroManageDialog = heroManage;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)
