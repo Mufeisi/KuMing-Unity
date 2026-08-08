@@ -31,18 +31,27 @@ namespace Crystal.Client.Rendering
             CrashGuard.Init();
             // 9-2 首启设置：分辨率/全屏（Crystal.ini 持久化；首启写默认 1280×720 窗口）
             PcStartup.Apply();
-            GameRuntime.ScreenW = Screen.width;
-            GameRuntime.ScreenH = Screen.height;
-            // 8-10 性能分级 + 9-2 安全模式降级：上次崩溃 → 窗口化默认分辨率 + Medium 档（不再 ApplyAuto 高档）
+            // 8-10 性能分级 + 9-2 安全模式降级：上次崩溃 → 强制窗口化默认分辨率（防全屏驱动
+            // 崩溃循环）+ Medium 档；否则按设备自动分级
             if (CrashGuard.SafeMode)
             {
+                try
+                {
+                    Screen.SetResolution(PcStartup.DefaultWidth, PcStartup.DefaultHeight, FullScreenMode.Windowed);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[game-bootstrap] safe-mode SetResolution fail {ex.GetType().Name}");
+                }
                 TierQualityApplier.Apply(DeviceTier.Medium);
-                Debug.Log("[game-bootstrap] safe-mode: 降档 Medium（上次异常退出）");
+                Debug.Log("[game-bootstrap] safe-mode: 窗口化默认分辨率 + 降档 Medium（上次异常退出）");
             }
             else
             {
                 TierQualityApplier.ApplyAuto();
             }
+            GameRuntime.ScreenW = Screen.width;
+            GameRuntime.ScreenH = Screen.height;
             string exeDir = Path.GetDirectoryName(Application.dataPath);
             GameSession.MapDir = Env("CRYSTAL_MAP_DIR", Path.GetFullPath(Path.Combine(exeDir, "../Server/publish/Maps")));
             GameRenderer.MapAtlasDir = Env("CRYSTAL_MAP_ATLAS_DIR", Path.GetFullPath(Path.Combine(exeDir, "../assetcompile/map")));
