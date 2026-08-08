@@ -765,6 +765,11 @@ namespace Crystal.Client.Rendering
             {
                 var main = new MainDialog { Parent = scene };
                 scene.MainDialog = main;
+                // 聊天窗（8-5-2）：常驻创建（旧客户端 MainDialog ctor 直接建底部聊天窗，Unity 端此前裁剪——
+                // 聊天输入未接，ChatDialog 从未实例化）。ChatDialog ctor 读 Scene.MainDialog.Location →
+                // 须在 main 之后（NetProbe 顺序契约同款）。常驻可见（底部聊天窗，点聊天按钮开输入框弹软键盘）。
+                var chat = new ChatDialog { Parent = scene };
+                scene.ChatDialog = chat;
                 var inv = new InventoryDialog { Parent = scene };
                 scene.InventoryDialog = inv;
                 // NPC 对话框（8-3-1）：常驻创建默认隐藏。不设为 Visible=false 会污染 UiHitTest

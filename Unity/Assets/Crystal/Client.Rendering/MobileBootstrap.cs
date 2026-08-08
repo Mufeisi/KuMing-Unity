@@ -46,7 +46,8 @@ namespace Crystal.Client.Rendering
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
         readonly MobileBag _quest = new MobileBag(1280, 720);  // 任务按钮（8-4-1）：装备下方开/关任务日记（蓝 tint）
         readonly MobileBag _map = new MobileBag(1280, 720);    // 大地图按钮（8-4-2）：任务下方开/关大地图（紫 tint）
-        Texture2D _attackTex, _hpTex, _mpTex, _bagTex;      // HUD 纹理（圆盘/满条/方块，惰性生成一次）
+        readonly MobileChat _chat = new MobileChat(1280, 720); // 聊天（8-5-2）：底部左缘聊天/频道按钮
+        Texture2D _attackTex, _hpTex, _mpTex, _bagTex, _chatTex; // HUD 纹理（圆盘/满条/方块，惰性生成一次）
 
         void Start()
         {
@@ -98,11 +99,20 @@ namespace Crystal.Client.Rendering
             _map.SetMargin(new Vector2(MobileBag.ButtonMargin.x, MobileBag.ButtonMargin.y + (MobileBag.ButtonH + 8f) * 3));
             _map.TintOpen = new Color(0.85f, 0.6f, 1f, 0.95f);
             _map.TintClosed = new Color(0.6f, 0.35f, 0.85f, 0.95f);
+            // 聊天（8-5-2）：底部左缘聊天/频道按钮。OnOpenInput=开输入框（首次开注入当前频道前缀）
+            // + 弹软键盘；OnChannel=切换频道前缀（输入框开着则重写文本前缀并重开软键盘使初始文本生效，
+            // 服务器按 !/@ 前缀分频道）。发送走软键盘 Enter（SoftKeyboardBridge Submitted → ChatTextBox_KeyPress
+            // → C.Chat），不另设发送按钮。接线逻辑集中在 MobileChat 静态助手（探针共用）。
+            _chat.OnOpenInput = () => MobileChat.OpenInput(GameScene.Scene?.ChatDialog, _chat.Channel);
+            _chat.OnChannel = ch => MobileChat.ApplyChannel(GameScene.Scene?.ChatDialog, ch);
             // 返回键钩子（8-0 适配层）：Android Back → 关顶层对话框（当前最小形态=关背包面板），无对话框则未消费。
             // Hide()（增量2）顺带清选中+Tooltip；装备窗口（增量3）优先关（顶层先关）。
             MobileUiAdapter.BackHandler = () =>
             {
                 var scene = GameScene.Scene;
+                // 聊天输入（8-5-2）：输入框开（软键盘弹出中）Back 先关输入（对齐 PC Escape 隐藏清空语义）。
+                var chat = scene != null ? scene.ChatDialog : null;
+                if (chat != null && MobileChat.CloseInput(chat)) return true;
                 // 大地图（8-4-2）：移动端地图按钮打开，Back 关闭（顶层先关）+ 打断在途寻路。
                 var bigMap = scene != null ? scene.BigMapDialog : null;
                 if (bigMap != null && bigMap.Visible) { bigMap.Hide(); _autoPath.Cancel(); return true; }
@@ -242,6 +252,8 @@ namespace Crystal.Client.Rendering
                 _quest.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
             if (_map.ScreenW != GameRuntime.ScreenW || _map.ScreenH != GameRuntime.ScreenH)
                 _map.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
+            if (_chat.ScreenW != GameRuntime.ScreenW || _chat.ScreenH != GameRuntime.ScreenH)
+                _chat.SetScreen(GameRuntime.ScreenW, GameRuntime.ScreenH);
 
             var scene = GameScene.Scene;
             var main = scene != null ? scene.MainDialog : null;
@@ -253,6 +265,7 @@ namespace Crystal.Client.Rendering
             var qtrk = scene != null ? scene.QuestTrackingDialog : null;
             var bigMap = scene != null ? scene.BigMapDialog : null;
             var mini = scene != null ? scene.MiniMapDialog : null;
+            var chat = scene != null ? scene.ChatDialog : null;
             // 文本字形必须批前合成（R8 实证：batch 内 GetTextTexture 读字体图集 GetPixels32 返回透明）。
             // Process 先刷新标签文本 → WarmTree 预构建最新字形 → 批次内 DrawText 只命中缓存。
             if (main != null)
@@ -283,11 +296,14 @@ namespace Crystal.Client.Rendering
                 try { mini.Process(); } catch (Exception ex) { Debug.LogError($"[mobile] mini-process {ex.GetType().Name}: {ex.Message}"); }
                 UiText.WarmTree(mini);
             }
+            // 聊天窗（8-5-2）：常驻底部（旧客户端 GameScene 每帧 Draw），ChatLines 文本标签批前须合帧。
+            if (chat != null) UiText.WarmTree(chat);
 
             CrystalSpriteBatch.Begin(null, GameRuntime.ScreenW, GameRuntime.ScreenH);
             CrystalSpriteBatch.SetBlend(false, 1f, CrystalBlendMode.NORMAL); // 场景残留 additive 混合会漂白 HUD
             if (main != null) main.Draw();
             if (mini != null) mini.Draw(); // 小地图常驻（右上角，Visible 默认 true），背包面板打开时仍显示
+            if (chat != null) chat.Draw(); // 聊天窗常驻底部（8-5-2），输入框/历史滚动均在窗内
             if (inv != null && inv.Visible) inv.Draw();
             if (chr != null && chr.Visible) chr.Draw();
             if (qdia != null && qdia.Visible) qdia.Draw();
@@ -299,6 +315,7 @@ namespace Crystal.Client.Rendering
             _equip.Render(_bagTex);
             _quest.Render(_bagTex);
             _map.Render(_bagTex);
+            _chat.Render(_chatTex);
             _hud.Render(_attackTex, _hpTex, _mpTex);
             CrystalSpriteBatch.End();
         }
@@ -337,6 +354,7 @@ namespace Crystal.Client.Rendering
             _hpTex = SolidTexture(bw, bh);
             _mpTex = SolidTexture(bw, bh);
             _bagTex = SolidTexture((int)MobileBag.ButtonW, (int)MobileBag.ButtonH); // 背包按钮白色方块（Render tint 上色）
+            _chatTex = SolidTexture((int)MobileChat.ButtonW, (int)MobileChat.ButtonH); // 聊天按钮白色方块（Render tint 上色）
         }
 
         static Texture2D SolidTexture(int w, int h)
@@ -397,7 +415,7 @@ namespace Crystal.Client.Rendering
                 }
                 MobileUiAdapter.RouteTouch(new MobileUiAdapter.TouchRoute
                 {
-                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui), // 背包/装备/任务/地图按钮（ui 空间，短路：背包先消费）
+                    UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui) || _quest.OnTouch(id, ph, ui) || _map.OnTouch(id, ph, ui) || _chat.OnTouch(id, ph, ui), // 背包/装备/任务/地图/聊天按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
                     // 摇杆（raw 空间）→ 地图 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），

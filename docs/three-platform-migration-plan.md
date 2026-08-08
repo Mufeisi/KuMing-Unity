@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）；第3项 增量3 仓库存取（storageverify 9/9，见任务 `8-3-3`）；第4项 增量1 任务四窗（questverify 9/9，见任务 `8-4-1`）；第4项 增量2 大地图触控（mapverify 8/8 + gamesession/quest 回归 PASS，见任务 `8-4-2`）；第4项 增量3 小地图触控（minimapverify 6/6 + gamesession/hud/ui/pickup 回归 PASS，见任务 `8-4-3`）；第5项 增量1 软键盘+安全区（safeareaverify 7/7 + hud/bag/ui/softkeyboard 回归 PASS，见任务 `8-5-1`）；第5项 增量2 聊天触控（chatverify 11/11 + safearea/softkeyboard/minimap/ui 回归 PASS，见任务 `8-5-2`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第5项 增量1 软键盘+安全区（8-5-1 ✅）已完成。下一增量 8-5-2 聊天触控化。阶段8 第4项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
+**当前在途**：阶段8 第5项 增量2 聊天触控（8-5-2 ✅）已完成。下一增量 8-6-1 组队流程触控化。阶段8 第4/5项 已全收口（8-4-1 任务四窗 ✅ + 8-4-2 大地图 ✅ + 8-4-3 小地图 ✅ + 8-5-1 软键盘+安全区 ✅ + 8-5-2 聊天 ✅）。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -107,7 +107,7 @@
 | 8-4-2 | 大地图触控化 | 8·第4项 | ✅ | 8-4-1 | 0.5~1d |
 | 8-4-3 | 小地图触控化 | 8·第4项 | ✅ | 8-4-1 | 0.5~1d |
 | 8-5-1 | 软键盘桥接 + 安全区适配（基础） | 8·第5项 | ✅ | 8-0 | 1d |
-| 8-5-2 | 聊天触控化（频道/发送） | 8·第5项 | 🔲 | 8-5-1 | 1d |
+| 8-5-2 | 聊天触控化（频道/发送） | 8·第5项 | ✅ | 8-5-1 | 1d |
 | 8-6-1 | 组队流程触控化 | 8·第6项 | 🔲 | 8-3-1 | 1d |
 | 8-6-2 | 好友流程触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
 | 8-6-3 | 行会面板触控化 | 8·第6项 | 🔲 | 8-6-1 | 1d |
@@ -346,7 +346,7 @@
 - 实现：`SafeArea` 单一来源（`Screen.safeArea` 左下原点 → 四边 inset `(left,top,right,bottom)`，Provider seam 注入，消费方一律读它禁各自硬编码）——`MobileHud` 血条（顶/左 inset 下移内缩）+ 攻击按钮（底/右 inset 上抬内缩）、`MobileBag` 右上按钮列 + 派生按钮（装备/任务/地图 SetMargin 堆叠）继承；inset=0（非刘海全屏）布局与旧基准逐像素一致。软键盘触控接线（桥 `SoftKeyboardBridge` 于 sanduan P2 交付，本项补接线）：`MobileUiAdapter.RouteTouch` Down 命中可见启用 `MirTextBox` → `TryFocusTextBox`（递归子树，`InputTextBox.Enabled` 读启用态——`MirControl.Enabled` getter internal 跨程序集不可读）→ `SoftKeyboardBridge.Focus`（Open TouchScreenKeyboard，初始文本/密码/最大长度走框属性），Poll 文本回流 + Enter 提交（`KeyPress(Enter)` 进控件树，ChatDialog/登录同链）。`SafeAreaVerify` 7/7（inset 注入读值/HUD 偏移/背包+派生列继承/inset=0 回归不漂移/聚焦 Open+文本回流+Enter 提交/框外·不可见·禁用不聚焦/RouteTouch Down 聚焦+对话框消费不喂摇杆）。
 
 #### 8-5-2 聊天触控化
-状态：🔲｜预估：1d｜依赖：8-5-1
+状态：✅｜预估：1d｜依赖：8-5-1
 
 - 目标：聊天框输入（走软键盘）、频道选择、发送触控。
 - 开发：`ChatDialog` 触控（输入焦点/频道按钮/发送）；复用 PC 迭代包1。
@@ -354,6 +354,7 @@
 - 验证：探针 PASS + PC 回归 `net-ui.ps1` + 冒烟。
 - 提交：`feat(阶段8): 聊天触控化`。
 - 验收：真机发一条聊天。
+- 实现：`InitInGameDialogs` 常驻创建 `ChatDialog`（旧客户端 MainDialog ctor 直接建底部聊天窗，Unity 端此前裁剪从未实例化；ChatDialog ctor 读 `MainDialog.Location`，须在 main 之后，NetProbe 顺序契约同款）。`MobileChat` 触控控制器（底部左缘两个程序化按钮）：聊天按钮 → `OpenInput`（首次开注入当前频道前缀 + `SetChatText("")` 聚焦显示 + `SoftKeyboardBridge.Focus` 弹软键盘）；频道按钮 → 循环 0 附近/1 全员 `!`/2 行会 `@`（服务器按文本前缀分频道，`ApplyChannel` 开着输入框则去旧前缀补新前缀并重开软键盘使初始文本生效——Poll SyncText 以键盘文本覆盖框文本）。发送走软键盘 Enter（`SoftKeyboardBridge` Submitted → `ChatTextBox_KeyPress` → `C.Chat`），不另设发送按钮（YAGNI）。`MobileBootstrap`：`_chat` 按钮 + UiConsumer 链（`_map` 后）+ RenderHud 每帧 `chat.Draw()`（常驻底部）+ `UiText.WarmTree`（ChatLines 批前合帧）+ Back 优先关输入（`CloseInput` 对齐 PC Escape 隐藏清空语义）。接线逻辑集中在 `MobileChat` 静态助手（OpenInput/ApplyChannel/CloseInput，探针与运行时共用 DRY）。`ChatVerify` 11/11（常驻+输入框默认隐藏/聊天 tap 开输入+聚焦+键盘/频道循环 0→1→2→0/文本回流+Enter 提交 C.Chat/前缀注入发送/开着切频道重写前缀+重开键盘/未开切频道不触碰/按钮区外不消费/Cancel 抑制/CloseInput 幂等/RouteTouch 集成消费不喂摇杆）。
 
 #### 8-6-1 组队流程触控化
 状态：🔲｜预估：1d｜依赖：8-3-1
