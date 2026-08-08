@@ -62,6 +62,99 @@ namespace Crystal.Client.Rendering
             return !string.Equals(remote.Version, local.Version, StringComparison.Ordinal);
         }
 
+        // 拉取远端清单：GET baseUrl/resource.manifest.json → 解析。失败（网络/404/JSON 坏）返回 null。
+        public static ResourceManifest FetchManifest(string baseUrl)
+        {
+            byte[] data = GetBytes(baseUrl, LocalManifestName);
+            if (data == null) return null;
+            try
+            {
+                var m = JsonUtility.FromJson<ResourceManifest>(System.Text.Encoding.UTF8.GetString(data));
+                return m != null && m.Files != null ? m : null;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[resource-sync] remote manifest parse fail: {ex.Message}");
+                return null;
+            }
+        }
+
+        // 写回本地清单（下载完成后的版本凭据：下次启动 IsVersionOutdated 比对它）。
+        // 原子写：先写 .tmp 再 rename（崩溃不留下半截清单，避免下次启动 parse fail 误判）。
+        public static void WriteLocalManifest(string localManifestPath, ResourceManifest remote)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(localManifestPath));
+                string tmp = localManifestPath + ".tmp";
+                File.WriteAllText(tmp, JsonUtility.ToJson(remote, true));
+                File.Delete(localManifestPath);
+                File.Move(tmp, localManifestPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[resource-sync] write local manifest fail {localManifestPath}: {ex.Message}");
+            }
+        }
+
+        // 批量同步（8-9-2 下载系统核心）：PlanDiff（版本门 + 文件级兜底）→ 逐个 DownloadFile，
+        // 单文件失败重试 retries 次（重试间 300ms 退避）→ 全部成功写回本地清单返回 true；
+        // 任一文件重试后仍失败返回 false（不写清单，下次启动版本仍过期重试）。
+        // progress(i, total, rel) 每成功一个文件回调（i 从 1 起）。远端清单为空 = 无可同步 → 写回即成功。
+        public static bool SyncResources(string baseUrl, ResourceManifest remote, string destDir,
+            string localManifestPath, Action<int, int, string> progress = null, int retries = 2)
+        {
+            if (remote == null || remote.Files == null) return false;
+            if (remote.Files.Count == 0) { WriteLocalManifest(localManifestPath, remote); return true; }
+            var need = PlanDiff(remote, BuildLocalIndex(destDir));
+            int total = need.Count;
+            int done = 0;
+            foreach (var rel in need)
+            {
+                bool ok = false;
+                for (int attempt = 0; attempt <= retries; attempt++)
+                {
+                    if (DownloadFile(baseUrl, rel, destDir, ShaOf(remote, rel))) { ok = true; break; }
+                    if (attempt < retries)
+                    {
+                        Debug.LogWarning($"[resource-sync] retry {rel} attempt={attempt + 1}/{retries}");
+                        System.Threading.Thread.Sleep(300); // 退避：瞬时闪断快速重试大概率再败
+                    }
+                }
+                if (!ok)
+                {
+                    Debug.LogError($"[resource-sync] sync fail rel={rel}（已重试 {retries} 次）");
+                    return false;
+                }
+                done++;
+                progress?.Invoke(done, total, rel);
+            }
+            WriteLocalManifest(localManifestPath, remote);
+            return true;
+        }
+
+        static string ShaOf(ResourceManifest remote, string rel)
+        {
+            foreach (var e in remote.Files)
+                if (string.Equals(e.Rel, rel, StringComparison.OrdinalIgnoreCase)) return e.Sha256;
+            return null;
+        }
+
+        static byte[] GetBytes(string baseUrl, string rel)
+        {
+            string url = baseUrl.TrimEnd('/') + "/" + Uri.EscapeUriString(rel);
+            using var req = UnityWebRequest.Get(url);
+            req.timeout = 30; // 同上：防 fetch 无限挂死
+            req.SendWebRequest();
+            while (!req.isDone) System.Threading.Thread.Sleep(10);
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"[resource-sync] get fail rel={rel} result={req.result} err={req.error}");
+                return null;
+            }
+            return req.downloadHandler.data;
+        }
+
         // 本地目录 → rel→(size, sha256) 索引（与远端清单同语义，rel 正斜杠）。目录不存在返回空。
         public static Dictionary<string, (long Size, string Sha256)> BuildLocalIndex(string dir)
         {
@@ -90,10 +183,17 @@ namespace Crystal.Client.Rendering
         }
 
         // GET baseUrl/<rel> → 落盘 <destDir>/<rel> → sha256 校验；不匹配删文件返回 false（不留下脏状态）。
+        // rel 来自远端清单（不可信）：IsSafeRel 拒绝路径穿越（.. 段/绝对路径/盘符）防逃逸 destDir。
         public static bool DownloadFile(string baseUrl, string rel, string destDir, string expectedSha)
         {
+            if (!IsSafeRel(rel))
+            {
+                Debug.LogWarning($"[resource-sync] unsafe rel rejected {rel}");
+                return false;
+            }
             string url = baseUrl.TrimEnd('/') + "/" + Uri.EscapeUriString(rel);
             using var req = UnityWebRequest.Get(url);
+            req.timeout = 30; // 默认 0=永不超时；TCP 半开/吞包会无限挂死主线程（启动卡死+ANR）
             req.SendWebRequest();
             while (!req.isDone) System.Threading.Thread.Sleep(10);
             if (req.result != UnityWebRequest.Result.Success)
@@ -126,6 +226,17 @@ namespace Crystal.Client.Rendering
             var sb = new System.Text.StringBuilder(b.Length * 2);
             for (int i = 0; i < b.Length; i++) sb.Append(b[i].ToString("X2"));
             return sb.ToString();
+        }
+
+        // rel 安全校验（远端清单不可信）：非空、无盘符/协议冒号、非绝对路径、无 .. 段（含 \ 归一）。
+        static bool IsSafeRel(string rel)
+        {
+            if (string.IsNullOrEmpty(rel)) return false;
+            if (rel.IndexOf(':') >= 0) return false;
+            if (rel[0] == '/' || rel[0] == '\\') return false;
+            foreach (var seg in rel.Replace('\\', '/').Split('/'))
+                if (seg == "..") return false;
+            return true;
         }
     }
 }

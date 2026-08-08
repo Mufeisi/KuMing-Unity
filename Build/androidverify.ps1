@@ -12,7 +12,8 @@ param(
     [int]$WaitSec = 300,
     [switch]$NoBuild,
     [switch]$Smoke,          # 冒烟模式：单次进图+截图，跳过 launch#1 发现/bag/swipe 时序注入
-    [switch]$KeepEmulator   # 保留模拟器常驻：下一轮跳过冷启动（省 1-3 分钟）
+    [switch]$KeepEmulator,   # 保留模拟器常驻：下一轮跳过冷启动（省 1-3 分钟）
+    [switch]$Cdn             # OTA 模式（8-9-2）：不 adb push，起本地 HTTP CDN → 首启自动下载资源进图
 )
 # EAP 用 Continue 而非 Stop：PS 5.1 下原生命令（adb）写 stderr（进度如 "1 file pushed"）在 Stop 下
 # 会转成终止性 NativeCommandError 中断脚本；脚本所有失败判定均为显式 exit 检查，不需 Stop 兜底。
@@ -45,6 +46,63 @@ $atlasUi = Join-Path $root "Build\android-res\atlas-ui"        # UI lib subset (
 $coordCache = Join-Path $root "Build\android-res\spawn-coord.txt"
 $radius = 60
 $port = 7000
+# OTA CDN（8-9-2）：资源根按设备布局（Maps/mapAtlas/atlas）组装 + AssetCompiler manifest（--version），
+# python http.server 托管；模拟器经 10.0.2.2 访问宿主。
+$cdnRoot = Join-Path $root "Build\android-cdn"
+$cdnPort = 18080
+$cdnManifest = Join-Path $cdnRoot "resource.manifest.json"
+$cdnVersion = "1.0.0"
+$cdnProc = $null
+function Update-CdnRoot {
+    # 同步 CDN 根：地图/图集/UI 子集按设备布局复制 + 重新生成 manifest（重裁后 hash 变化必须刷新，
+    # 否则设备按旧清单校验新文件失败）。manifest 版本固定 → 文件级 PlanDiff 补差（8-9-3 增量雏形）。
+    # 先清空 mapAtlas/atlas 再复制：防重裁后旧裁剪文件残留（manifest 越滚越大）。
+    if (-not (Test-Path $cdnRoot)) { New-Item -ItemType Directory -Path $cdnRoot -Force | Out-Null }
+    $cdnMaps = Join-Path $cdnRoot "Maps"; $cdnAtlas = Join-Path $cdnRoot "mapAtlas"; $cdnUi = Join-Path $cdnRoot "atlas"
+    New-Item -ItemType Directory -Path $cdnMaps, $cdnAtlas, $cdnUi -Force | Out-Null
+    Get-ChildItem $cdnAtlas -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+    Get-ChildItem $cdnUi -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+    Copy-Item (Join-Path $publish "Maps\nn0.map") (Join-Path $cdnMaps "nn0.map") -Force
+    # 递归复制保留相对路径：subset 输出是 mapAtlas/ShandaMir2/*.json|png 目录结构（非平铺），
+    # 顶层 -File 会漏全部；设备 MapAtlasDir 期望同布局。
+    foreach ($srcRoot in @($mapAtlas, $atlasUi)) {
+        if (-not (Test-Path $srcRoot)) { continue }
+        $destRoot = $cdnAtlas
+        if ($srcRoot -eq $atlasUi) { $destRoot = $cdnUi }
+        Get-ChildItem $srcRoot -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring((Resolve-Path $srcRoot).Path.Length).TrimStart('\', '/')
+            $target = Join-Path $destRoot $rel
+            New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+            Copy-Item $_.FullName $target -Force
+        }
+    }
+    & $compiler manifest $cdnRoot --out $cdnManifest --version $cdnVersion 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: cdn manifest"; exit 1 }
+    $cnt = (Get-ChildItem $cdnRoot -Recurse -File | Where-Object { $_.Name -ne "resource.manifest.json" }).Count
+    Write-Host "  cdn-root files=$cnt (manifest v$cdnVersion)"
+}
+function Reset-CdnPort {
+    # 清残留：上一轮脚本异常退出可能留 python http.server 占 18080（Test-Port 误判就绪 + 复用旧 CDN 根）
+    $listeners = netstat -ano | Select-String ":$cdnPort\s+.*LISTENING"
+    foreach ($l in $listeners) {
+        $procId = ($l.ToString().Trim() -split '\s+')[-1]
+        if ($procId -match '^\d+$') { taskkill /PID $procId /F 2>&1 | Out-Null; Write-Host "  killed stale :$cdnPort pid=$procId" }
+    }
+}
+function Start-CdnServer {
+    Reset-CdnPort
+    $global:cdnProc = Start-Process -FilePath "python" -ArgumentList @("-m", "http.server", "$cdnPort", "--directory", $cdnRoot, "--bind", "0.0.0.0") -PassThru -WindowStyle Hidden
+    $deadline = (Get-Date).AddSeconds(30); $ready = $false
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Port $cdnPort) { $ready = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $ready) { Write-Host "FAIL: cdn http server"; exit 1 }
+    Write-Host "  cdn server on :$cdnPort (http://10.0.2.2:$cdnPort/)"
+}
+function Stop-CdnServer {
+    if ($null -ne $global:cdnProc -and -not $global:cdnProc.HasExited) { Stop-Process $global:cdnProc -Force }
+}
 
 # E2E 进度提示：每轮 30-40 分钟，长等待无输出易误判卡死。Write-Step 打印自增 [n] 阶段标记（时间戳），
 # Wait-Tick 在等待循环里每 15s 心跳一行（含已等时长/总时长），证明脚本仍在推进。
@@ -166,6 +224,7 @@ if (-not $NoBuild) {
 $env:CRYSTAL_APK_OUT = $apk
 $env:CRYSTAL_NET_HOST = "10.0.2.2"; $env:CRYSTAL_NET_PORT = "$port"
 $env:CRYSTAL_LOGIN_ID = $LoginId; $env:CRYSTAL_LOGIN_PW = $LoginPw
+if ($Cdn) { $env:CRYSTAL_CDN_URL = "http://10.0.2.2:$cdnPort/" } else { $env:CRYSTAL_CDN_URL = "" }
 & $unity -batchmode -projectPath $unityProj -executeMethod Crystal.Rendering.Editor.BuildAndroid.Run -quit -logFile $buildLog | Out-Null
 $code = $LASTEXITCODE
 $line = (Select-String -Path $buildLog -Pattern "\[build-android\] OK |\[build-android\] FAIL|\[build-android\] exception" | Select-Object -Last 1).Line
@@ -196,12 +255,18 @@ if (-not $ready) { Write-Host "FAIL: server did not open port $port"; exit 1 }
 Write-Host "server ready on port $port"
 if (-not (Wait-EmulatorBoot)) { Write-Host "FAIL: emulator boot timeout"; exit 1 }
 
-# 3. 安装 APK + push 资源
-Write-Step "install APK + push resources"
+# 3. 安装 APK + 资源注入。Cdn 模式（8-9-2）：不 push，组装 CDN 根 + 起 HTTP 服务器，设备数据
+#    由 relaunch 前 pm clear 清空（模拟卸载重装 → 首启全量下载进图）；非 Cdn：adb push 预置。
+Write-Step "install APK + $(if ($Cdn) { 'start CDN server' } else { 'push resources' })"
 $inst = AdbOut @("install", "-r", $apk)
 Write-Host "  install: $($inst.Trim())"
 if ($inst -notmatch "Success") { Write-Host "FAIL: adb install"; exit 1 }
 
+if ($Cdn) {
+    if (-not (Ensure-AtlasUi)) { Write-Host "FAIL: atlas-ui prepare"; exit 1 }
+    Update-CdnRoot
+    Start-CdnServer
+} else {
 # 4.2 push 资源：nn0.Map + 首次中心裁剪图集 + UI atlas 子集（先 rm 再 push，adb 目录 push 是合并语义，防旧文件残留）
 & $adb shell rm -rf "$deviceFiles/mapAtlas" 2>&1 | Out-Null
 & $adb shell mkdir -p "$deviceFiles/Maps" "$deviceFiles/mapAtlas" 2>&1 | Out-Null
@@ -212,6 +277,7 @@ if (-not (Ensure-AtlasUi)) { Write-Host "FAIL: atlas-ui prepare"; exit 1 }
 & $adb shell rm -rf "$deviceFiles/atlas" 2>&1 | Out-Null
 & $adb shell mkdir -p "$deviceFiles/atlas" 2>&1 | Out-Null
 if (-not (Push-Device $atlasUi "$deviceFiles/atlas")) { Write-Host "FAIL: push ui atlas"; exit 1 }
+}
 
 # 5. 出生坐标选择。缓存优先（实测出生点稳定 293,615 附近，账号绑定；缓存命中 → 直接用缓存坐标裁剪
 #    推送，跳过 launch#1 两步启动省 2-3 分钟）；无缓存时：完整模式做 launch#1 实际坐标发现+重裁，
@@ -223,9 +289,11 @@ if (Test-Path $coordCache) {
     if ($cached -match "^(\d+),(\d+)$") {
         Write-Host "  cached spawn coord=$cached"
         if (-not (Invoke-Subset $cached)) { Write-Host "FAIL: subset cached crop"; exit 1 }
+        if ($Cdn) { Update-CdnRoot } else {
         & $adb shell rm -rf "$deviceFiles/mapAtlas" 2>&1 | Out-Null
         & $adb shell mkdir -p "$deviceFiles/mapAtlas" 2>&1 | Out-Null
         if (-not (Push-Device $mapAtlas "$deviceFiles/mapAtlas")) { Write-Host "FAIL: push cached atlas"; exit 1 }
+        }
         $coord = $cached
     }
 }
@@ -241,9 +309,11 @@ if ([string]::IsNullOrEmpty($coord)) {
             & $adb logcat -c | Out-Null
             AdbOut @("shell", "am", "start", "-n", "$pkg/$activity") | Out-Null
             Write-Host "launch $pkg attempt=$attempt"
-            $deadline = (Get-Date).AddSeconds(120)
+            # Cdn 模式 launch#1 要先下载中心裁剪资源（本地回环 HTTP 快，但首启 + 下载 + 进图放宽窗口）
+            $discoverDeadline = if ($Cdn) { 300 } else { 120 }
+            $deadline = (Get-Date).AddSeconds($discoverDeadline)
             while ((Get-Date) -lt $deadline) {
-                $l = Get-MobileLog "\[mobile\] (error|user@)"
+                $l = Get-MobileLog "\[mobile\] (error|resync FAIL|resync exception|boot-ex|exception|user@)"
                 if ($l -match "error") { Write-Host "FAIL: mobile error $l"; exit 1 }
                 if ($l -match "\[mobile\] user@(\d+),(\d+)") {
                     $coord = $Matches[1] + "," + $Matches[2]
@@ -256,13 +326,15 @@ if ([string]::IsNullOrEmpty($coord)) {
                 continue
             }
             if ($attempt -eq 1) {
-                # 按实际出生坐标重裁并重推图集
+                # 按实际出生坐标重裁并重推图集（Cdn：刷新 CDN 根 + 重生成 manifest，relaunch 全量下载）
                 AdbOut @("shell", "am", "force-stop", $pkg) | Out-Null
-                Write-Host "spawn coord=$coord, re-crop + re-push"
+                Write-Host "spawn coord=$coord, re-crop + $(if ($Cdn) { 'refresh cdn' } else { 're-push' })"
                 if (-not (Invoke-Subset $coord)) { Write-Host "FAIL: subset spawn crop"; exit 1 }
+                if ($Cdn) { Update-CdnRoot } else {
                 & $adb shell rm -rf "$deviceFiles/mapAtlas" 2>&1 | Out-Null
                 & $adb shell mkdir -p "$deviceFiles/mapAtlas" 2>&1 | Out-Null
                 if (-not (Push-Device $mapAtlas "$deviceFiles/mapAtlas")) { Write-Host "FAIL: re-push atlas"; exit 1 }
+                }
                 $coord = ""
             }
         }
@@ -271,12 +343,18 @@ if ([string]::IsNullOrEmpty($coord)) {
 }
 
 # 6. 最终断言链：connect -> login -> select -> enter-game -> user@x,y（force-stop 干净重启 + 重开 logcat 窗口）
+#    Cdn 模式：pm clear 清空应用数据（模拟卸载重装）→ relaunch 首启全量下载（resync done）→ 进图
 AdbOut @("shell", "am", "force-stop", $pkg) | Out-Null
+if ($Cdn) {
+    AdbOut @("shell", "pm", "clear", $pkg) | Out-Null
+    Write-Host "  pm clear pkg=$pkg (fresh-install simulation)"
+}
 & $adb logcat -c | Out-Null
 AdbOut @("shell", "am", "start", "-n", "$pkg/$activity") | Out-Null
-Write-Step "relaunch: spawn-crop + full assert"
+Write-Step "relaunch: $(if ($Cdn) { 'OTA full download' } else { 'spawn-crop' }) + full assert"
 $deadline = (Get-Date).AddSeconds($WaitSec)
 $chain = @{ connect = $false; login = $false; select = $false; enter = $false; user = $false }
+if ($Cdn) { $chain["resync"] = $false }
 $coords = @()
 $t = 0
 while ((Get-Date) -lt $deadline) {
@@ -288,6 +366,7 @@ while ((Get-Date) -lt $deadline) {
             "select"  { "\[mobile\] select-ready" }
             "enter"   { "\[mobile\] enter-game" }
             "user"    { "\[mobile\] user@\d+,\d+" }
+            "resync"  { "\[mobile\] resync done files=[1-9]\d*" }
         }
         if ((Get-MobileLog $pat) -ne "") { $chain[$k] = $true }
     }
@@ -496,6 +575,7 @@ Write-Host "  moved=$moved coords=$($coords -join ' | ')"
 # 9. 清理
 AdbOut @("shell", "am", "force-stop", $pkg) | Out-Null
 if (-not $server.HasExited) { Stop-Process $server -Force }
+Stop-CdnServer
 if (-not $KeepEmulator -and $null -ne $emulatorProc -and -not $emulatorProc.HasExited) { Stop-Process $emulatorProc -Force }
 if ($KeepEmulator -and $null -ne $emulatorProc -and -not $emulatorProc.HasExited) { Write-Host "  keep emulator running (next E2E skips boot)" }
 

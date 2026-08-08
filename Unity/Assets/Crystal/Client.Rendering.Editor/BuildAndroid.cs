@@ -122,12 +122,13 @@ namespace Crystal.Rendering.Editor
             int port = IntEnvOr("CRYSTAL_NET_PORT", 7000);
             string id = EnvOr("CRYSTAL_LOGIN_ID", "pcplayer");
             string pw = EnvOr("CRYSTAL_LOGIN_PW", "pcplayer");
+            string cdn = EnvOr("CRYSTAL_CDN_URL", "");
             string path = Path.Combine("Assets", "Crystal", "Client.Rendering", "MobileConfig.cs");
             File.WriteAllText(path,
                 "namespace Crystal.Client.Rendering\n" +
                 "{\n" +
-                "    // Android 连接配置（生成源）：BuildAndroid.Run 每次构建按 env 重写（CRYSTAL_NET_HOST/PORT/LOGIN_ID/LOGIN_PW），\n" +
-                "    // env 缺省时回落到此提交值（= androidverify 默认：模拟器 10.0.2.2 → 宿主服务端）。\n" +
+                "    // Android 连接配置（生成源）：BuildAndroid.Run 每次构建按 env 重写（CRYSTAL_NET_HOST/PORT/LOGIN_ID/LOGIN_PW/CDN_URL），\n" +
+                "    // env 缺省时回落到此提交值（= androidverify 默认：模拟器 10.0.2.2 → 宿主服务端；CDN_URL 空 = 不走 OTA 下载）。\n" +
                 "    // 静态字段的初始化值在 Player 构建时编译固化，Editor 运行时赋值不进产物，故走生成源注入。\n" +
                 "    static class MobileConfig\n" +
                 "    {\n" +
@@ -135,9 +136,10 @@ namespace Crystal.Rendering.Editor
                 $"        public const int NetPort = {port};\n" +
                 $"        public const string LoginId = \"{id}\";\n" +
                 $"        public const string LoginPw = \"{pw}\";\n" +
+                $"        public const string CdnUrl = \"{cdn}\";\n" +
                 "    }\n" +
                 "}\n");
-            Console.WriteLine($"[build-android] config host={host} port={port} login={id}");
+            Console.WriteLine($"[build-android] config host={host} port={port} login={id} cdn={(string.IsNullOrEmpty(cdn) ? "(none)" : cdn)}");
         }
 
         static string EnvOr(string name, string def)

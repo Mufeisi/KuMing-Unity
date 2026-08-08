@@ -26,6 +26,7 @@ namespace Crystal.Client.Rendering
         public static int NetPort = MobileConfig.NetPort;
         public static string LoginId = MobileConfig.LoginId;
         public static string LoginPw = MobileConfig.LoginPw;
+        public static string CdnUrl = MobileConfig.CdnUrl; // 资源 CDN 根（含 resource.manifest.json）；空 = 跳过 OTA 下载（adb push 兼容）
 
         bool _booted;
         bool _renderReady;
@@ -297,6 +298,10 @@ namespace Crystal.Client.Rendering
             SoftKeyboardBridge.Keyboard = new UnitySoftKeyboard();
 
             Debug.Log($"[mobile] boot maps={GameSession.MapDir} atlas={GameRenderer.AtlasDir}");
+            // 8-9-2 OTA 下载系统：CDN_URL 非空时首启资源同步（版本过期→PlanDiff→重试下载→写回 manifest）
+            // 完成才进连接（图集缺段有负缓存不崩但缺图，须先下齐）。同步阻塞式（UnityWebRequest 引擎线程
+            // 完成，主线程等待）；真机弱网超时/ANR 优化属 8-9-4。
+            EnsureResources();
             try
             {
                 GameSession.Connect(host, port);
@@ -315,6 +320,36 @@ namespace Crystal.Client.Rendering
                 string logPath = Path.Combine(Application.persistentDataPath, "mobile-boot-error.log");
                 try { File.WriteAllText(logPath, sb.ToString()); } catch (Exception io) { sb.AppendLine($"[IO] {io.Message}"); }
                 Debug.LogError($"[mobile] boot-ex {ex.GetType().Name}: {ex.Message} inner-chain:\n{sb}");
+            }
+        }
+
+        // 8-9-2 OTA 下载系统：CDN_URL 非空 → 拉远端清单 → 版本过期/文件差异 → SyncResources
+        // 批量下载（重试 + 校验落盘）→ 写回本地 manifest。失败不阻塞连接（图集缺段有负缓存不崩，
+        // 但日志醒目 [mobile] resync FAIL 供 E2E/诊断）。日志链供 androidverify 断言：
+        //   resync ver=.. outdated=.. → resync {i}/{n} {rel} → resync done files={downloaded}
+        void EnsureResources()
+        {
+            if (string.IsNullOrEmpty(CdnUrl))
+            {
+                Debug.Log("[mobile] resync skip cdn-url-empty");
+                return;
+            }
+            string dataDir = Application.persistentDataPath;
+            string manPath = Path.Combine(dataDir, ResourceSync.LocalManifestName);
+            try
+            {
+                var remote = ResourceSync.FetchManifest(CdnUrl);
+                if (remote == null) { Debug.LogError("[mobile] resync FAIL fetch-manifest"); return; }
+                bool outdated = ResourceSync.IsVersionOutdated(remote, manPath);
+                Debug.Log($"[mobile] resync ver={remote.Version} outdated={outdated}");
+                int downloaded = 0;
+                bool ok = ResourceSync.SyncResources(CdnUrl, remote, dataDir, manPath,
+                    (i, n, rel) => { downloaded = i; Debug.Log($"[mobile] resync {i}/{n} {rel}"); });
+                Debug.Log(ok ? $"[mobile] resync done files={downloaded}" : "[mobile] resync FAIL");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[mobile] resync exception {ex.GetType().Name}: {ex.Message}");
             }
         }
 

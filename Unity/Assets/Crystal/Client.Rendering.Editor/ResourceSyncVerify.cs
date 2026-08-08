@@ -31,7 +31,8 @@ namespace Crystal.Rendering.Editor
                 bool ok = DiffCase(Path.Combine(root, "diff"), ref cases)
                        & DownloadCase(Path.Combine(root, "dl"), ref cases)
                        & VersionCase(Path.Combine(root, "ver"), ref cases)
-                       & DeterminismCase(Path.Combine(root, "det"), ref cases);
+                       & DeterminismCase(Path.Combine(root, "det"), ref cases)
+                       & SyncCase(Path.Combine(root, "sync"), ref cases);
                 try { Directory.Delete(root, true); } catch { }
                 Debug.Log($"[resourcesync] {(ok ? "PASS" : "FAIL")} cases={cases}");
                 EditorApplication.Exit(ok ? 0 : 1);
@@ -234,6 +235,107 @@ namespace Crystal.Rendering.Editor
             File.WriteAllText(path, json);
         }
 
+        // 场景5（8-9-2）：SyncResources 批量同步端到端。服务器托管 manifest + 3 文件：
+        //  5a 空 dest 全量下载落盘 + manifest 写回 + 进度序列 1/3,2/3,3/3
+        //  5b 幂等：再跑无下载（need=0，进度零回调，仍返回 true）
+        //  5c 篡改本地 b.bin → 只补 b.bin（进度 1/1）
+        //  5d 重试：c.bin 首次 404（FailOnce）→ 重试成功
+        //  5e 恒失败：d.bin 不存在 → SyncResources false + 本地 manifest 未写回（版本凭据保持旧值）
+        static bool SyncCase(string root, ref int cases)
+        {
+            string serverRoot = Path.Combine(root, "server");
+            string dest = Path.Combine(root, "dest");
+            Directory.CreateDirectory(serverRoot);
+            Directory.CreateDirectory(dest);
+            File.WriteAllBytes(Path.Combine(serverRoot, "a.bin"), Encoding.ASCII.GetBytes("aaa"));
+            File.WriteAllBytes(Path.Combine(serverRoot, "b.bin"), Encoding.ASCII.GetBytes("bbb"));
+            File.WriteAllBytes(Path.Combine(serverRoot, "c.bin"), Encoding.ASCII.GetBytes("ccc"));
+            string manPath = Path.Combine(dest, ResourceSync.LocalManifestName);
+            var remote = new ResourceManifest
+            {
+                Version = "2.0.0",
+                Files = new List<ResourceFileEntry>
+                {
+                    new ResourceFileEntry { Rel = "a.bin", Size = 3, Sha256 = Sha("aaa") },
+                    new ResourceFileEntry { Rel = "b.bin", Size = 3, Sha256 = Sha("bbb") },
+                    new ResourceFileEntry { Rel = "c.bin", Size = 3, Sha256 = Sha("ccc") },
+                },
+            };
+            File.WriteAllText(Path.Combine(serverRoot, ResourceSync.LocalManifestName),
+                JsonUtility.ToJson(remote, true));
+
+            bool ok = true;
+            using (var server = new MiniHttpServer(serverRoot))
+            {
+                string baseUrl = $"http://127.0.0.1:{server.Port}/";
+                var progress = new List<string>();
+
+                // 5a 全量
+                bool okA = ResourceSync.SyncResources(baseUrl, remote, dest, manPath,
+                    (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                ok &= Check(okA && File.Exists(Path.Combine(dest, "a.bin")) && File.Exists(Path.Combine(dest, "b.bin"))
+                    && File.Exists(Path.Combine(dest, "c.bin")) && File.Exists(manPath)
+                    && !ResourceSync.IsVersionOutdated(remote, manPath)
+                    && progress.Count == 3 && progress[0] == "1/3:a.bin" && progress[2] == "3/3:c.bin",
+                    "5a 空目录全量下载落盘+manifest 写回+进度序列 1/3→3/3");
+
+                // 5b 幂等
+                progress.Clear();
+                bool okB = ResourceSync.SyncResources(baseUrl, remote, dest, manPath,
+                    (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                ok &= Check(okB && progress.Count == 0, "5b 幂等：文件全齐 → 零下载仍返回 true");
+
+                // 5c 篡改补差
+                File.WriteAllBytes(Path.Combine(dest, "b.bin"), Encoding.ASCII.GetBytes("XXX"));
+                progress.Clear();
+                bool okC = ResourceSync.SyncResources(baseUrl, remote, dest, manPath,
+                    (i, n, rel) => progress.Add($"{i}/{n}:{rel}"));
+                ok &= Check(okC && progress.Count == 1 && progress[0] == "1/1:b.bin"
+                    && Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(dest, "b.bin"))) == "bbb",
+                    "5c 篡改 b.bin → 仅补该文件");
+
+                // 5d 瞬时失败重试
+                server.FailOnce.Add("c.bin");
+                bool okD = ResourceSync.SyncResources(baseUrl, remote, dest, manPath);
+                ok &= Check(okD && Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(dest, "c.bin"))) == "ccc",
+                    "5d 首次 404 → 重试成功");
+
+                // 5e 恒失败：远端清单含 d.bin（服务器无文件）→ 重试后仍失败 + manifest 不更新
+                var remoteBad = new ResourceManifest
+                {
+                    Version = "3.0.0",
+                    Files = new List<ResourceFileEntry>
+                    {
+                        new ResourceFileEntry { Rel = "d.bin", Size = 1, Sha256 = Sha("d") },
+                    },
+                };
+                string oldLocal = File.ReadAllText(manPath);
+                bool okE = ResourceSync.SyncResources(baseUrl, remoteBad, dest, manPath);
+                ok &= Check(!okE && File.ReadAllText(manPath) == oldLocal, "5e 恒失败 → false 且本地 manifest 未写回");
+
+                // 5f 路径穿越：rel=../evil.bin 必须被拒绝（防逃逸 destDir）
+                var remoteEvil = new ResourceManifest
+                {
+                    Version = "4.0.0",
+                    Files = new List<ResourceFileEntry>
+                    {
+                        new ResourceFileEntry { Rel = "../evil.bin", Size = 1, Sha256 = Sha("x") },
+                    },
+                };
+                string evilParent = Path.Combine(dest, "..", "evil.bin");
+                bool okF = ResourceSync.SyncResources(baseUrl, remoteEvil, dest, manPath);
+                ok &= Check(!okF && !File.Exists(evilParent), "5f 路径穿越 ../evil.bin 拒绝且未写盘");
+
+                // 5g FetchManifest：成功（服务器 manifest）+ 失败（无服务端口）→ null
+                var fetched = ResourceSync.FetchManifest(baseUrl);
+                ok &= Check(fetched != null && fetched.Version == "2.0.0", "5g fetch 远端清单成功（Version=2.0.0）");
+                ok &= Check(ResourceSync.FetchManifest("http://127.0.0.1:1/") == null, "5g fetch 网络失败 → null");
+            }
+            Debug.Log($"[resourcesync] sync-case ok={ok}");
+            if (ok) cases++;
+            return ok;
+        }
+
         static string Sha(string s) => Hex(SHA256.Create().ComputeHash(Encoding.ASCII.GetBytes(s)));
 
         static string Hex(byte[] b)
@@ -244,12 +346,14 @@ namespace Crystal.Rendering.Editor
         }
 
         // 极简本地静态 HTTP 服务器（TcpListener 单线程逐个服务；供探针端到端验证，非产品服务器）。
+        // FailOnce：命中集合中的 rel 首次请求返回 404 并从集合移除（模拟瞬时故障 → 重试语义验证）。
         sealed class MiniHttpServer : IDisposable
         {
             readonly TcpListener _listener;
             readonly string _root;
             readonly Task _loop;
             volatile bool _stop;
+            public readonly HashSet<string> FailOnce = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             public int Port { get; }
 
@@ -284,6 +388,8 @@ namespace Crystal.Rendering.Editor
                 string[] parts = head.Split(' '); // GET /path HTTP/1.1
                 if (parts.Length < 2 || parts[0] != "GET") { Write(s, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"); return; }
                 string file = Path.GetFullPath(Path.Combine(_root, Uri.UnescapeDataString(parts[1]).TrimStart('/').Replace('/', '\\')));
+                string rel = Uri.UnescapeDataString(parts[1]).TrimStart('/');
+                if (FailOnce.Remove(rel)) { Write(s, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"); return; }
                 if (!file.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(file))
                 { Write(s, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"); return; }
                 byte[] body = File.ReadAllBytes(file);
