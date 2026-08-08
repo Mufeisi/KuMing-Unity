@@ -354,6 +354,21 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.MailCost:
                     MailCost((S.MailCost)p);
                     break;
+                case (short)ServerPacketIds.NPCMarket:
+                    NPCMarket((S.NPCMarket)p);
+                    break;
+                case (short)ServerPacketIds.NPCMarketPage:
+                    NPCMarketPage((S.NPCMarketPage)p);
+                    break;
+                case (short)ServerPacketIds.ConsignItem:
+                    ConsignItem((S.ConsignItem)p);
+                    break;
+                case (short)ServerPacketIds.MarketFail:
+                    MarketFail((S.MarketFail)p);
+                    break;
+                case (short)ServerPacketIds.MarketSuccess:
+                    MarketSuccess((S.MarketSuccess)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -1025,6 +1040,81 @@ namespace Crystal.Client.Rendering
             dlg.ParcelCostLabel.Text = p.Cost.ToString();
         }
 
+        // ── 拍卖行（8-7-3）──
+
+        // S.NPCMarket：NPC 市场入口回声 → 物品绑定 + 市场面板整表 + 翻页归零 + 刷新。
+        // 旧客户端 GameScene.NPCMarket 逐字：Bind 每件 + Listings 整表 + Show + UserMode +
+        // Page=0 + PageCount=Pages + UpdateInterface。Show() 会 TMerchantDialog(Market) 重发
+        // C.MarketSearch 拉首页 + 开背包（对齐旧客户端入口语义）。
+        internal static void NPCMarket(S.NPCMarket p)
+        {
+            foreach (var item in p.Listings)
+                GameScene.Bind(item.Item);
+            var dlg = GameScene.Scene?.TrustMerchantDialog;
+            if (dlg == null) return;
+            dlg.Show();
+            TrustMerchantDialog.UserMode = p.UserMode;
+            dlg.Listings.Clear();
+            dlg.Listings.AddRange(p.Listings);
+            dlg.Page = 0;
+            dlg.PageCount = p.Pages;
+            dlg.UpdateInterface();
+        }
+
+        // S.NPCMarketPage：翻页回声 → 追加一页（旧客户端逐字：Page=(Count-1)/10）。
+        internal static void NPCMarketPage(S.NPCMarketPage p)
+        {
+            var dlg = GameScene.Scene?.TrustMerchantDialog;
+            if (dlg == null || !dlg.Visible) return;
+            foreach (var item in p.Listings)
+                GameScene.Bind(item.Item);
+            dlg.Listings.AddRange(p.Listings);
+            dlg.Page = (dlg.Listings.Count - 1) / 10;
+            dlg.UpdateInterface();
+        }
+
+        // S.ConsignItem：寄售回声 → 解锁源格，成功清格 + 重算属性（旧客户端逐字：
+        // GetCell 背包 → BeltDialog（Unity 无腰带 → 仅背包）；失败仅解锁不扣物）。
+        internal static void ConsignItem(S.ConsignItem p)
+        {
+            var scene = GameScene.Scene;
+            var dlg = scene?.TrustMerchantDialog;
+            if (dlg == null) return;
+            var cell = scene.InventoryDialog.GetCell(p.UniqueID);
+            if (cell == null) return;
+            cell.Locked = false;
+            if (!p.Success) return;
+            cell.Item = null;
+            MapObject.User.RefreshStats();
+        }
+
+        // S.MarketFail：失败原因提示（旧客户端 Reason 0-10 逐字）+ 节流归零（立即放行下次操作）。
+        internal static void MarketFail(S.MarketFail p)
+        {
+            TrustMerchantDialog.MarketTime = 0;
+            switch (p.Reason)
+            {
+                case 0: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouCannotUseTrustMerchantWhenDead)); break;
+                case 1: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.YouCannotBuyFromTrustMerchantWithoutUsing)); break;
+                case 2: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.ItemHasBeenSold)); break;
+                case 3: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.ItemExpiredCannotBeBought)); break;
+                case 4: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.LowGold)); break;
+                case 5: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.NotEnoughWeightOrSpaceToBuyItem)); break;
+                case 6: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.CannotBuyOwnItems)); break;
+                case 7: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.TooFarFromTrustMerchant)); break;
+                case 8: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.CannotHoldGoldForSale)); break;
+                case 9: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.ItemNotMetMinimumBid)); break;
+                case 10: MirMessageBox.Show(GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.AuctionAlreadyEndedForItem)); break;
+            }
+        }
+
+        // S.MarketSuccess：成功提示 + 节流归零（旧客户端逐字）。
+        internal static void MarketSuccess(S.MarketSuccess p)
+        {
+            TrustMerchantDialog.MarketTime = 0;
+            MirMessageBox.Show(p.Message);
+        }
+
         internal static void ObjectSpell(S.ObjectSpell p)
         {
             if (MapControl.Objects.TryGetValue(p.ObjectID, out var ob) && ob is SpellObject spo)
@@ -1303,6 +1393,13 @@ namespace Crystal.Client.Rendering
                 scene.MailReadLetterDialog = readLetter;
                 var readParcel = new MailReadParcelDialog { Parent = scene, Visible = false };
                 scene.MailReadParcelDialog = readParcel;
+                // 拍卖行（8-7-3）：常驻创建默认隐藏（同 NPCDialog 模式）。顺序契约：
+                // TrustMerchantDialog ctor 建筛选树/行控件 + Show() 内部 TMerchantDialog(Market)
+                // 发 C.MarketSearch 拉首页 + 开背包（GameScene.Scene.InventoryDialog 须已建，
+                // inv 在 NPCDialog 后建）。S.NPCMarket/S.NPCMarketPage/S.ConsignItem/
+                // MarketFail/MarketSuccess 分发刷新面板；BuyButton Auction 分支弹 MirAmountBox 出价。
+                var market = new TrustMerchantDialog { Parent = scene, Visible = false };
+                scene.TrustMerchantDialog = market;
                 // DuraStatusPanel 为旧客户端 DuraStatusDialog seam 占位（Unity 未渲染耐久条），
                 // MiniMapDialog Toggle/档位自适应 SetSmallMode/SetBigMode 引用其 Location → 空控件防 NRE。
                 if (scene.DuraStatusPanel == null)

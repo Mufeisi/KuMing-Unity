@@ -76,8 +76,8 @@ namespace Client.MirScenes.Dialogs
 
         public List<Filter> Filters = new List<Filter>();
 
-        List<MirButton> FilterButtons = new List<MirButton>();
         List<MirLabel> FilterLabels = new List<MirLabel>();
+        public List<MirButton> FilterButtons = new List<MirButton>(); // 筛选树按钮（探针断言 C.MarketSearch 参数）
 
         private int Skip = 0;
         private int MaxLines = 19;
@@ -385,7 +385,20 @@ namespace Client.MirScenes.Dialogs
                             Network.Enqueue(new C.MarketBuy { AuctionID = Selected.Listing.AuctionID });
                             break;
                         case MarketItemType.Auction:
-                            // 原弹 MirAmountBox 输入出价 + MirMessageBox 确认（未移植弹窗基类）→ 点击留空。
+                            // 竞拍出价（8-7-3）：MirAmountBox 输入出价（旧客户端逐字：min=当前价+1、
+                            // default=当前价+1）。无 MirMessageBox 二次确认（对齐 UserMode/Consign/
+                            // GameShop 直发包惯例）；节流 MarketTime=+3000 同款。OKButton.Click 内
+                            // 置 Dispose 先注册先执行，此处追加 handler 读 Amount 仍有效。
+                            var bidAmount = new MirAmountBox(
+                                GameLanguage.ClientTextMap.GetLocalization(ClientTextKeys.BidAmount),
+                                Selected.Listing.Item.Info.Image, uint.MaxValue,
+                                Selected.Listing.Price + 1, Selected.Listing.Price + 1);
+                            bidAmount.OKButton.Click += (o1, e1) =>
+                            {
+                                MarketTime = CMain.Time + 3000;
+                                Network.Enqueue(new C.MarketBuy { AuctionID = Selected.Listing.AuctionID, BidPrice = bidAmount.Amount });
+                            };
+                            bidAmount.Show();
                             break;
                     }
                 }

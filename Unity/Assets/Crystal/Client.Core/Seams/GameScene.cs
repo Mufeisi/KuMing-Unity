@@ -94,6 +94,7 @@ namespace Client.MirScenes
         public Dialogs.MailListDialog MailListDialog;
         public Dialogs.TradeDialog TradeDialog;
         public Dialogs.GuestTradeDialog GuestTradeDialog;
+        public Dialogs.TrustMerchantDialog TrustMerchantDialog;
         public Dialogs.HelpDialog HelpDialog;
         // 聊天设置对话框（迭代包10，ChatOptionDialog.cs）：字段名与旧客户端 GameScene.cs:104 一致。
         public Dialogs.ChatOptionDialog ChatOptionDialog;
