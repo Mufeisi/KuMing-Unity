@@ -54,7 +54,7 @@
 | 5 | PC UI 功能面 | ✅ | G5 有条件 | 迭代包 1-10（全部对话框控制树）+ 文本管线 |
 | 6 | PC Player + 边缘补验 | ✅ | — | C1-C5 运行时 + 真实屏幕渲染；11/11 边缘补验；**C4 决策与 G6 见阶段9** |
 | 7 | 移动骨架 | ✅ | G7 部分 | Android Host/生命周期/触控适配/资源同步/设备分级 + iOS 配置；**G7 判定拆到阶段8/10** |
-| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 进行中 |
+| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 ✅ → 第3项 进行中 |
 | 9 | PC 收尾与发布 | 🔲 | G6 | 原阶段6 剩余：UI 决策/安装补丁/长稳/性能/灰度 |
 | 10 | iOS 落地 | 🔲 | G7 iOS | 阻塞：macOS + Xcode + 证书 |
 
@@ -69,10 +69,10 @@
 - **阶段5**：迭代包 1-10 全部对话框控制树（HUD/聊天/背包/装备/商店/仓库/技能/任务/地图/组队/好友/行会/交易/邮件/拍卖/英雄/坐骑/商城/设置）+ 文本字形管线（TextGlyphBuilder）；Gate G5 通过（有条件）。
 - **阶段6**：边缘补验 11/11（del/run/split/revive/recon/autopath/magic/钓鱼/天气）；C1-C3 运行时（GameRenderer/GameSession/GameRuntime）；C5 PC Player 构建 + 真实屏幕渲染（`[pcplayer] shot` PASS）。
 - **阶段7**：移动骨架 6 项全完成（Android Host APK 16MB、横屏/生命周期、TouchInput 触控适配 8 用例、ResourceSync 资源同步 2 场景、DeviceCapability 分级 2 场景、iOS 配置 3 断言）。
-- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）。
+- **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第2项 增量5——地面拾取（点物品→C.PickUp）。见任务 `8-2-5`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），恢复开发文档剩余任务（8-2-4 ✅ → 8-2-5 拾取 → 8-3-1 NPC 对话 → …）。
+**当前在途**：阶段8 第3项 增量1——NPC 对话触控化（点 NPC → 对话树选项可点/翻页/关闭）。见任务 `8-3-1`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅，8-2-5 拾取见下节）。
 
 ---
 
@@ -99,7 +99,7 @@
 | 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | ✅ | 8-2-1 | 1~1.5d |
 | 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | ✅ | 8-2-2 | 1d |
 | 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | ✅ | 8-2-2 | 0.5d |
-| 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | 🔲 | 8-2-2 | 1d |
+| 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | ✅ | 8-2-2 | 1d |
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | 🔲 | 8-2-2 | 1d |
 | 8-3-2 | 商店买卖触控化 | 8·第3项 | 🔲 | 8-3-1 | 1d |
 | 8-3-3 | 仓库存取触控化 | 8·第3项 | 🔲 | 8-3-1 | 0.5~1d |
@@ -238,12 +238,12 @@
 - 验收：真机喝药回血，数量正确。
 
 #### 8-2-5 拾取
-状态：🔲｜预估：1d｜依赖：8-2-2
+状态：✅｜预估：1d｜依赖：8-2-2｜完成：2026-08-08｜验收：真机走到掉落物旁点击拾取，背包物品+1
 
 - 目标：点地面物品 → `C.PickUp` → 进背包。
-- 开发：地面物品判定（`MapControl.Objects` 中 `ItemObject` 最近者 + 距离校验）；点击拾取 + 拾取反馈；与摇杆/战斗互斥（点击 vs 移动判定）。
-- 测试：探针（地面物品/无物品/距离外/拾取成功入包）。
-- 验证：探针 PASS + PC 回归 `net-interact.ps1`（PickUp 路径）+ 冒烟。
+- 落地（2026-08-08）：`MobilePickup` 纯逻辑控制器（仿 `MobileCombat`）——地图 tap（ui 空间）→ 屏转格（`ItemObject.Process` 世界→屏幕逆变换：`tileX = ui.X/CellWidth - OffSetX + user.Movement.X`）→ 最近 `ItemObject`（tap 距 ≤TapRadius=1 且距玩家 ≤PickupRadius=3）设目标；目标格==玩家格 → `C.PickUp`（节流 PickupCooldownMs=200，对齐旧客户端 `PickUpTime+200` 同源）；否则 `PathFinder` 逐格 `C.Walk`（物品格非 Blocking 可直达）到格即拾取；目标被拾取移除（`S.ObjectRemove` → `MapObject.Remove`）→ 自动清目标。接线：`MobileBootstrap` 摇杆 Up 且无拖拽位移（`!ReleasedWithIntent`）且非 HUD 按钮区（`MobileHud.Hit`）→ tap；摇杆 Down/拖拽/面板打开 → `Cancel`（移动优先）；拾取目标激活时战斗自动索敌让位。对照决策：服务端 `PickUp()` 仅拾取玩家**当前所在格**（逐格走位到格是必须，非优化）；拾取反馈（选中框/拾取飘字）不移植——物品移除即反馈（KISS/YAGNI）。注：`FloorItems` 图集不在仓库，运行时地面物品尚未生成（`GameSession.ObjectItem` 早退），拾取控制器作用于对象模型，待数据落地即可用。
+- 测试：探针 6/6（命中+邻格命中/无物品/距离外拒绝/相邻拾取+节流+冷却重发/目标移除清目标/两格寻路走位到格后拾取）。
+- 验证：`Build/pickupverify.ps1` → `[pickupverify] PASS cases=6`；回归 useitem 6/6 + equip 5/5 + baginteract 7/7 + mobileui 7/7；PC 回归 `net-interact.ps1`（PickUp 路径）。
 - 提交：`feat(阶段8): 地面拾取触控`。
 - 验收：真机走到掉落物旁点击拾取，背包物品+1。
 

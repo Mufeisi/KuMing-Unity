@@ -89,6 +89,9 @@ namespace Crystal.Client.Rendering
 
         bool InAttack(Vector2 pos) => (pos - _attackCenter).magnitude <= AttackRadius;
 
+        // 公开命中谓词（ui 空间）：拾取等地图 tap 判定排除 HUD 按钮区（攻击按钮 tap 走 HUD 不触发拾取）。
+        public bool Hit(Vector2 ui) => InAttack(ui);
+
         // 外部打断（背包面板打开等）：丢弃攻击按钮按下态（面板打开期间触摸不喂入，Up 永久丢失），
         // 并抑制后续松手容错（防面板关闭后残留 Up 误触发攻击）。
         public void Cancel() { _attackPressed = false; _canceled = true; }

@@ -37,6 +37,7 @@ namespace Crystal.Client.Rendering
         string _lastLoggedPos;
         readonly TouchJoystick _joystick = new TouchJoystick();
         readonly MobileCombat _combat = new MobileCombat(); // 自动战斗（增量2）：索敌→追击→普攻
+        readonly MobilePickup _pickup = new MobilePickup(); // 地面拾取（增量5）：地图 tap 设目标→走位→C.PickUp
         readonly MobileHud _hud = new MobileHud(1280, 720); // 战斗 HUD（增量3）：攻击按钮+血条，尺寸每帧 SetScreen 同步
         readonly MobileBag _bag = new MobileBag(1280, 720); // 背包按钮（增量1）：右上角开/关背包面板
         readonly MobileBag _equip = new MobileBag(1280, 720); // 装备按钮（增量3）：背包按钮下方开/关装备窗口（绿 tint）
@@ -149,9 +150,14 @@ namespace Crystal.Client.Rendering
             PollJoystick();
             GameRuntime.TickLogic();
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备面板打开期间同样暂停（面板操作不被打断）。
+            // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
             bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true));
-            if (!_joystick.Active && !uiOpen) _combat.Tick();
+            if (!_joystick.Active && !uiOpen)
+            {
+                if (_pickup.Active) _pickup.Tick();
+                else _combat.Tick();
+            }
             LogPosition();
             // 渲染就绪钩子：首帧 BuildLibIndex 全图扫描慢（模拟器 swiftshader 约 2.6s），
             // androidverify 等此日志后再截图/swipe（避免纯色误判 + 低帧率触摸丢失）。
@@ -305,7 +311,17 @@ namespace Crystal.Client.Rendering
                     UiConsumer = (id, ph, ui) => _bag.OnTouch(id, ph, ui) || _equip.OnTouch(id, ph, ui), // 背包/装备按钮（ui 空间，短路：背包先消费）
                     PanelOpen = bagOpen,
                     DialogHit = p => MobileUiAdapter.UiHitTest(p),                       // 可见对话框命中（ui 空间）
-                    Joystick = (id, ph, rawPos) => _joystick.OnTouch(id, ph, rawPos),   // 摇杆（raw 空间）
+                    // 摇杆（raw 空间）→ 拾取 tap 判定：Down 清旧目标（任何新触=移动意图或重新指定），
+                    // Up 且无拖拽位移（ReleasedWithIntent false）且非 HUD 按钮区 → 地图 tap → 设拾取目标。
+                    // TapAt 返回 false（无物品/距离外）即目标保持清空，不发包。
+                    Joystick = (id, ph, rawPos) =>
+                    {
+                        _joystick.OnTouch(id, ph, rawPos);
+                        var ui = MobileUiAdapter.ToUiPoint(rawPos);
+                        if (ph == JoystickPhase.Down) { _pickup.Cancel(); return; }
+                        if (ph == JoystickPhase.Up && !_joystick.ReleasedWithIntent && !_hud.Hit(MobileUiAdapter.ToUi(rawPos)))
+                            _pickup.TapAt(scene != null ? scene.MapControl : null, ui);
+                    },
                     Hud = (id, ph, ui) => _hud.OnTouch(id, ph, ui),                      // HUD（ui 空间）
                 }, t.fingerId, phase, raw);
             }
@@ -314,6 +330,7 @@ namespace Crystal.Client.Rendering
             bool moving = _joystick.Active && _joystick.Moving;
             if (moving)
             {
+                _pickup.Cancel(); // 移动优先：摇杆拖拽立即打断拾取目标
                 if (CMain.Time - _lastMoveAt >= MoveIntervalMs)
                 {
                     _lastMoveAt = CMain.Time;
@@ -359,6 +376,7 @@ namespace Crystal.Client.Rendering
                     inv.Visible = true;
                     _joystick.Cancel();
                     _hud.Cancel();
+                    _pickup.Cancel(); // 面板打开：打断在途拾取走位（用户转入 UI 操作）
                 }
                 else
                 {
@@ -392,6 +410,7 @@ namespace Crystal.Client.Rendering
                         GameScene.SelectedCell = null;
                         _joystick.Cancel();
                         _hud.Cancel();
+                        _pickup.Cancel(); // 面板互斥：开装备窗口同样打断拾取
                     }
                 }
                 else
