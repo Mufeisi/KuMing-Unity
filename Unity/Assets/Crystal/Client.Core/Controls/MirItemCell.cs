@@ -12,9 +12,10 @@ namespace Client.MirControls
     // 逐字移植（2026-08-05）：Client/MirControls/MirItemCell.cs 渲染核心
     // 背包/装备/Tooltip 场景（迭代包2）。数据绑定（Item/ItemArray/GridType/ItemSlot）+ DrawControl
     // （格子背景/物品图标/SealedInfo 特效/数量角标）+ 悬停 Tooltip 触发，逐字保留。
-    // 交互（增量2 点格选中；增量3 双击穿脱）：OnMouseClick 选中 / OnMouseDoubleClick→UseItem
-    // （背包格可穿戴→C.EquipItem，装备格→卸下）/CanWearItem 资格校验。拖拽（MoveItem 2639 行主体）、
-    // 药品/卷轴使用（C.UseItem）属后续增量；未移植对话框分支（DropPanel/TrustMerchant/Renting/Craft/
+    // 交互（增量2 点格选中；增量3 双击穿脱；增量4 双击用药）：OnMouseClick 选中 /
+    // OnMouseDoubleClick→UseItem（背包格可穿戴→C.EquipItem，药品/卷轴/书/食物→C.UseItem，装备格→卸下）
+    // /CanWearItem 资格校验。拖拽（MoveItem 2639 行主体）、
+    // 未移植对话框分支（DropPanel/TrustMerchant/Renting/Craft/
     // Storage/Trade/Mount 等）在 Item/ItemArray 中按 Scope Gate 剔除或抛 NotImplementedException。
     public sealed class MirItemCell : MirImageControl
     {
@@ -270,8 +271,8 @@ namespace Client.MirControls
             UseItem();
         }
 
-        // 使用物品（8-2-3 裁剪）：背包格可穿戴类型→C.EquipItem（锁目标槽+本格防重复双击）；
-        // 装备格→卸下（RemoveItem）。药品/卷轴/书（C.UseItem）属 8-2-4。右/左手槽序对齐旧客户端。
+        // 使用物品（8-2-3 裁剪 + 8-2-4 补充）：背包格可穿戴类型→C.EquipItem（锁目标槽+本格防重复双击）；
+        // 药品/卷轴/书/食物→C.UseItem（8-2-4，锁格待回流）；装备格→卸下（RemoveItem）。右/左手槽序对齐旧客户端。
         public void UseItem()
         {
             if (Locked) return;
@@ -335,6 +336,14 @@ namespace Client.MirControls
                 case ItemType.Stone: TryEquip(EquipmentSlot.Stone); break;
                 case ItemType.Torch: TryEquip(EquipmentSlot.Torch); break;
                 case ItemType.Mount: TryEquip(EquipmentSlot.Mount); break;
+                case ItemType.Potion:
+                case ItemType.Scroll:
+                case ItemType.Book:
+                case ItemType.Food:
+                    // 药品/消耗品（8-2-4）：双击背包格 → C.UseItem（服务器权威校验，S.UseItem 回流扣数量/解锁）。
+                    Network.Enqueue(new C.UseItem { UniqueID = Item.UniqueID, Grid = GridType });
+                    Locked = true;
+                    break;
             }
         }
 

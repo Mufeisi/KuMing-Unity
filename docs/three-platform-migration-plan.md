@@ -72,7 +72,7 @@
 - **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第2项 增量4——药品使用（点药水→C.UseItem）。见任务 `8-2-4`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），恢复开发文档剩余任务（8-2-4 → 8-2-5 拾取 → 8-3-1 NPC 对话 → …）。
+**当前在途**：阶段8 第2项 增量5——地面拾取（点物品→C.PickUp）。见任务 `8-2-5`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），恢复开发文档剩余任务（8-2-4 ✅ → 8-2-5 拾取 → 8-3-1 NPC 对话 → …）。
 
 ---
 
@@ -98,7 +98,7 @@
 | 8-2-1 | 移动背包按钮 + InventoryDialog 接入（在途收尾） | 8·第2项·增1 | ✅ | 8-0 | 0.5~1d |
 | 8-2-2 | 背包面板交互：选中/详情/Tooltip/切页 | 8·第2项·增2 | ✅ | 8-2-1 | 1~1.5d |
 | 8-2-3 | 装备穿戴（点格→EquipItem→角色外观） | 8·第2项·增3 | ✅ | 8-2-2 | 1d |
-| 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | 🔲 | 8-2-2 | 0.5d |
+| 8-2-4 | 药品使用（UseItem 触控，HP/MP 药） | 8·第2项·增4 | ✅ | 8-2-2 | 0.5d |
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | 🔲 | 8-2-2 | 1d |
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | 🔲 | 8-2-2 | 1d |
 | 8-3-2 | 商店买卖触控化 | 8·第3项 | 🔲 | 8-3-1 | 1d |
@@ -227,12 +227,13 @@
 - 验收：真机穿/脱武器，角色外观（Body/Hair/Weapon 层）随之变化。
 
 #### 8-2-4 药品使用
-状态：🔲｜预估：0.5d｜依赖：8-2-2
+状态：✅｜预估：0.5d｜依赖：8-2-2｜验收：真机喝药回血，数量正确
 
 - 目标：背包点药水 → `C.UseItem` → HP/MP 恢复 + 数量减少。
 - 开发：药水类型判定（UseItem 语义，参考 PC net-interact）；触控确认；`S.UseItem` 回包更新库存。
+- 落地（2026-08-08）：`MirItemCell.UseItem` 药水/卷轴/书/食物分支 → `C.UseItem`（锁格防重复双击）；`GameSession` 新增 `S.UseItem` 分发 + 回流 handler（成功→数量-1/清格 + RefreshStats，失败→仅解锁）。HP/MP 恢复走独立 `S.HealthChanged`（服务器权威封顶，客户端不本地补血 → 满血不溢出天然满足）。对照决策：旧客户端药水 Shape==4 确认框（MirMessageBox）与腰带自动移动（C.MoveItem）**不移植**——无移动 MirMessageBox，双击即触控确认（KISS/YAGNI）。
 - 测试：探针用例（用后数量-1/满血不溢出/非药水拒绝）。
-- 验证：探针 PASS + PC 回归 + 冒烟。
+- 验证：`Build/useitemverify.ps1` → `[useitemverify] PASS cases=6`（双击发包+锁格 / 数量-1 / 不本地补血 HP 恒不变 / 失败回流不扣数 / 最后一瓶清格 / 非药水走装备链）；回归 baginteract 7/7 + equip 5/5 + mobileui 7/7 + softkeyboard 8/8 + resolution 14/14 + bag 8/8。
 - 提交：`feat(阶段8): 药品使用触控`。
 - 验收：真机喝药回血，数量正确。
 

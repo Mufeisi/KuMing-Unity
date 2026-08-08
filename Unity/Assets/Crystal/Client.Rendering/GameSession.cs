@@ -226,6 +226,9 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.RemoveItem:
                     RemoveItem((S.RemoveItem)p);
                     break;
+                case (short)ServerPacketIds.UseItem:
+                    UseItem((S.UseItem)p);
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -392,6 +395,25 @@ namespace Crystal.Client.Rendering
 
             if (!p.Success) return;
             MapObject.User.ApplyRemove(p);
+        }
+
+        // 使用回流（8-2-4）：S.UseItem 成功确认→解锁来源背包格 + 数量-1/清格 + RefreshStats。
+        // HP/MP 恢复走独立 S.HealthChanged（服务器权威封顶，客户端不本地补血防溢出）。
+        // internal：useitemverify 探针（Crystal.Client.Rendering.Editor）直接调用测全链。
+        internal static void UseItem(S.UseItem p)
+        {
+            if (MapObject.User == null) return;
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+
+            var cell = scene.InventoryDialog != null ? scene.InventoryDialog.GetCell(p.UniqueID) : null;
+            if (cell == null) return;
+            cell.Locked = false;
+
+            if (!p.Success) return;
+            if (cell.Item.Count > 1) cell.Item.Count--;
+            else cell.Item = null;
+            MapObject.User.RefreshStats();
         }
 
         static void UserLocation(S.UserLocation p)
