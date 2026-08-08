@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Security.Cryptography;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -200,7 +201,7 @@ namespace Crystal.Client.Rendering
                 bool ok = false;
                 for (int attempt = 0; attempt <= retries; attempt++)
                 {
-                    if (DownloadFile(baseUrl, e.Rel, destDir, e.Sha256)) { ok = true; break; }
+                    if (DownloadFile(baseUrl, e.Rel, destDir, e.Sha256, e.Size)) { ok = true; break; }
                     if (attempt < retries)
                     {
                         Debug.LogWarning($"[resource-sync] delta retry {e.Rel} attempt={attempt + 1}/{retries}");
@@ -236,7 +237,7 @@ namespace Crystal.Client.Rendering
                 bool ok = false;
                 for (int attempt = 0; attempt <= retries; attempt++)
                 {
-                    if (DownloadFile(baseUrl, rel, destDir, ShaOf(remote, rel))) { ok = true; break; }
+                    if (DownloadFile(baseUrl, rel, destDir, ShaOf(remote, rel), SizeOf(remote, rel))) { ok = true; break; }
                     if (attempt < retries)
                     {
                         Debug.LogWarning($"[resource-sync] retry {rel} attempt={attempt + 1}/{retries}");
@@ -260,6 +261,13 @@ namespace Crystal.Client.Rendering
             foreach (var e in remote.Files)
                 if (string.Equals(e.Rel, rel, StringComparison.OrdinalIgnoreCase)) return e.Sha256;
             return null;
+        }
+
+        static long SizeOf(ResourceManifest remote, string rel)
+        {
+            foreach (var e in remote.Files)
+                if (string.Equals(e.Rel, rel, StringComparison.OrdinalIgnoreCase)) return e.Size;
+            return -1;
         }
 
         static byte[] GetBytes(string baseUrl, string rel)
@@ -304,35 +312,68 @@ namespace Crystal.Client.Rendering
             return need;
         }
 
-        // GET baseUrl/<rel> → 落盘 <destDir>/<rel> → sha256 校验；不匹配删文件返回 false（不留下脏状态）。
+        // GET baseUrl/<rel> → 断点续传落盘 <destDir>/<rel> → sha256 校验（8-9-4）。
+        // 用 HttpWebRequest 流式读（UnityWebRequest 失败时拿不到部分数据，无法断点）：ResponseStream
+        // 中途异常（断网/超时）→ 已写 .part 保留（下次带 Range bytes=existing- 续传）；
+        // 本地 .part 已 ≥ expectedSize → 坏 .part 丢弃重下；sha 校验失败删 .part（坏包不留残留）；
+        // 成功 rename .part → rel。服务器不支持 Range（回 200）→ 检测 Content-Range 决定 Create 重写。
         // rel 来自远端清单（不可信）：IsSafeRel 拒绝路径穿越（.. 段/绝对路径/盘符）防逃逸 destDir。
-        public static bool DownloadFile(string baseUrl, string rel, string destDir, string expectedSha)
+        public static bool DownloadFile(string baseUrl, string rel, string destDir, string expectedSha, long expectedSize = -1)
         {
             if (!IsSafeRel(rel))
             {
                 Debug.LogWarning($"[resource-sync] unsafe rel rejected {rel}");
                 return false;
             }
-            string url = baseUrl.TrimEnd('/') + "/" + Uri.EscapeUriString(rel);
-            using var req = UnityWebRequest.Get(url);
-            req.timeout = 30; // 默认 0=永不超时；TCP 半开/吞包会无限挂死主线程（启动卡死+ANR）
-            req.SendWebRequest();
-            while (!req.isDone) System.Threading.Thread.Sleep(10);
-            if (req.result != UnityWebRequest.Result.Success)
+            string dest = Path.Combine(destDir, rel);
+            string part = dest + ".part";
+            long existing = File.Exists(part) ? new FileInfo(part).Length : 0;
+            if (expectedSize > 0 && existing >= expectedSize)
             {
-                Debug.LogWarning($"[resource-sync] download fail rel={rel} result={req.result} err={req.error}");
+                File.Delete(part); // 坏 .part（大小已达期望但 sha 未过）→ 整体重下
+                existing = 0;
+            }
+            string url = baseUrl.TrimEnd('/') + "/" + Uri.EscapeUriString(rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest));
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.Timeout = 30000;        // 连接超时（默认 0=永不，防启动卡死+ANR）
+                req.ReadWriteTimeout = 30000; // 读超时：弱网半开不无限挂
+                if (existing > 0) req.AddRange(existing); // Range: bytes=existing-
+                using var resp = (HttpWebResponse)req.GetResponse();
+                using var stream = resp.GetResponseStream();
+                bool ranged = existing > 0 && resp.Headers["Content-Range"] != null;
+                using (var fs = new FileStream(part, ranged ? FileMode.Append : FileMode.Create))
+                {
+                    var buf = new byte[64 * 1024];
+                    int r;
+                    while ((r = stream.Read(buf, 0, buf.Length)) > 0) fs.Write(buf, 0, r);
+                }
+                // 完整性检查：.NET HttpWebRequest 对 Content-Length 短读不抛异常（读循环正常退出），
+                // 须按权威期望大小（manifest size）判定截断——截断则保留 .part 供下次 Range 续传。
+                long got = new FileInfo(part).Length;
+                if (expectedSize > 0 && got != expectedSize)
+                {
+                    Debug.LogWarning($"[resource-sync] truncated rel={rel} got={got} want={expectedSize} part 保留待续传");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                // 网络中断/超时：保留 .part（已写部分）供下次 Range 续传（失败恢复自愈）
+                Debug.LogWarning($"[resource-sync] download fail rel={rel} {ex.GetType().Name} part={existing}B err={ex.Message}");
                 return false;
             }
-            string dest = Path.Combine(destDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(dest));
-            File.WriteAllBytes(dest, req.downloadHandler.data);
-            string actual = Sha256File(dest);
+            string actual = Sha256File(part);
             if (!string.Equals(actual, expectedSha, StringComparison.OrdinalIgnoreCase))
             {
-                File.Delete(dest);
+                File.Delete(part); // 坏包不留残留（含 .part）
                 Debug.LogWarning($"[resource-sync] hash mismatch rel={rel} got={actual.Substring(0, Math.Min(8, actual.Length))}…");
                 return false;
             }
+            File.Delete(dest);
+            File.Move(part, dest);
             return true;
         }
 

@@ -33,7 +33,8 @@ namespace Crystal.Rendering.Editor
                        & VersionCase(Path.Combine(root, "ver"), ref cases)
                        & DeterminismCase(Path.Combine(root, "det"), ref cases)
                        & SyncCase(Path.Combine(root, "sync"), ref cases)
-                       & DeltaCase(Path.Combine(root, "delta"), ref cases);
+                       & DeltaCase(Path.Combine(root, "delta"), ref cases)
+                       & ResumeCase(Path.Combine(root, "resume"), ref cases);
                 try { Directory.Delete(root, true); } catch { }
                 Debug.Log($"[resourcesync] {(ok ? "PASS" : "FAIL")} cases={cases}");
                 EditorApplication.Exit(ok ? 0 : 1);
@@ -227,6 +228,49 @@ namespace Crystal.Rendering.Editor
                 Debug.LogError($"[resourcesync] AssetCompiler manifest-delta 调用失败 {ex.Message}");
                 return false;
             }
+        }
+
+        // 场景7（8-9-4）：断点续传/失败恢复。
+        //  7a 截断中断（服务器只发 30KB，流提前关闭）→ DownloadFile 失败但 .part=30KB 保留；
+        //     重试发 Range bytes=30000-（服务器 206）→ 追加完成 → sha 校验 → 落盘 + .part 消失。
+        //  7b 坏包（服务器内容 sha 与清单不符）→ 拒绝且无 rel/.part 残留（坏包不留残留）。
+        static bool ResumeCase(string root, ref int cases)
+        {
+            string serverRoot = Path.Combine(root, "server");
+            string dest = Path.Combine(root, "dest");
+            Directory.CreateDirectory(serverRoot);
+            Directory.CreateDirectory(dest);
+            var big = new byte[100 * 1024];
+            new System.Random(42).NextBytes(big); // 确定性内容
+            File.WriteAllBytes(Path.Combine(serverRoot, "big.bin"), big);
+            File.WriteAllBytes(Path.Combine(serverRoot, "bad.bin"), Encoding.ASCII.GetBytes("bad-content"));
+
+            bool ok = true;
+            using (var server = new MiniHttpServer(serverRoot))
+            {
+                string baseUrl = $"http://127.0.0.1:{server.Port}/";
+                // 7a 首次：服务器截断只发前 30KB → 客户端流提前关闭 → 失败，.part 保留 30KB
+                server.TruncateRel = "big.bin";
+                server.TruncateBytes = 30 * 1024;
+                bool first = ResourceSync.DownloadFile(baseUrl, "big.bin", dest, Sha(big), big.Length);
+                string partPath = Path.Combine(dest, "big.bin.part");
+                ok &= Check(!first && File.Exists(partPath) && new FileInfo(partPath).Length == 30 * 1024,
+                    "7a 截断中断 → 失败且 .part=30KB 保留");
+                // 7a 重试：Range bytes=30720- → 服务器 206 追加 → 校验通过 → 落盘 + .part 消失
+                bool second = ResourceSync.DownloadFile(baseUrl, "big.bin", dest, Sha(big), big.Length);
+                ok &= Check(second && !File.Exists(partPath)
+                    && Sha(File.ReadAllBytes(Path.Combine(dest, "big.bin"))) == Sha(big),
+                    "7a Range 续传 → 落盘完整（sha 一致）+ .part 消失");
+                // 7b 坏包：服务器内容与期望 sha 不符 → 拒绝 + 无 rel/.part 残留
+                string badSha = Sha("expected-different");
+                bool bad = ResourceSync.DownloadFile(baseUrl, "bad.bin", dest, badSha, "bad-content".Length);
+                ok &= Check(!bad && !File.Exists(Path.Combine(dest, "bad.bin"))
+                    && !File.Exists(Path.Combine(dest, "bad.bin.part")),
+                    "7b 坏包拒绝 + 无 rel/.part 残留");
+            }
+            Debug.Log($"[resourcesync] resume-case ok={ok}");
+            if (ok) cases++;
+            return ok;
         }
 
         static bool Check(bool cond, string label)
@@ -472,6 +516,7 @@ namespace Crystal.Rendering.Editor
         }
 
         static string Sha(string s) => Hex(SHA256.Create().ComputeHash(Encoding.ASCII.GetBytes(s)));
+        static string Sha(byte[] b) => Hex(SHA256.Create().ComputeHash(b));
 
         static string Hex(byte[] b)
         {
@@ -489,6 +534,10 @@ namespace Crystal.Rendering.Editor
             readonly Task _loop;
             volatile bool _stop;
             public readonly HashSet<string> FailOnce = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // 截断模式（8-9-4 断点续传用例）：命中 rel 时只发前 N 字节（Content-Length 仍全量 →
+            // 客户端流提前关闭 = 网络中断 → .part 保留）。消费一次后清除。
+            public string TruncateRel;
+            public int TruncateBytes;
 
             public int Port { get; }
 
@@ -528,6 +577,26 @@ namespace Crystal.Rendering.Editor
                 if (!file.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(file))
                 { Write(s, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"); return; }
                 byte[] body = File.ReadAllBytes(file);
+                // 截断模式：只发前 N 字节后关闭（模拟网络中断 → 客户端 .part 保留）
+                if (TruncateRel != null && string.Equals(rel, TruncateRel, StringComparison.OrdinalIgnoreCase))
+                {
+                    TruncateRel = null; // 消费一次
+                    int send = Math.Min(TruncateBytes, body.Length);
+                    Write(s, $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {body.Length}\r\n\r\n");
+                    s.Write(body, 0, send);
+                    return; // 关闭流 = 客户端收到截断
+                }
+                // Range 支持（断点续传）：bytes=start- 单段
+                string range = null;
+                foreach (var line in head.Split('\n'))
+                    if (line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase)) { range = line.Substring(6).Trim(); break; }
+                if (range != null && range.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase) && long.TryParse(range.Substring(6).TrimEnd('-'), out long start) && start > 0 && start < body.Length)
+                {
+                    int len = body.Length - (int)start;
+                    Write(s, $"HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes {start}-{body.Length - 1}/{body.Length}\r\nContent-Length: {len}\r\n\r\n");
+                    s.Write(body, (int)start, len);
+                    return;
+                }
                 Write(s, $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {body.Length}\r\n\r\n");
                 s.Write(body, 0, body.Length);
             }
