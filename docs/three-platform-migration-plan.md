@@ -54,7 +54,7 @@
 | 5 | PC UI 功能面 | ✅ | G5 有条件 | 迭代包 1-10（全部对话框控制树）+ 文本管线 |
 | 6 | PC Player + 边缘补验 | ✅ | — | C1-C5 运行时 + 真实屏幕渲染；11/11 边缘补验；**C4 决策与 G6 见阶段9** |
 | 7 | 移动骨架 | ✅ | G7 部分 | Android Host/生命周期/触控适配/资源同步/设备分级 + iOS 配置；**G7 判定拆到阶段8/10** |
-| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 ✅ → 第3项 进行中 |
+| 8 | Android 移动功能 | 🔶 | G8 | **8-0 适配层（新增）** → 第1项 ✅ → 第2项 ✅ → 第3项 ✅ → 第4项 待启动 |
 | 9 | PC 收尾与发布 | 🔲 | G6 | 原阶段6 剩余：UI 决策/安装补丁/长稳/性能/灰度 |
 | 10 | iOS 落地 | 🔲 | G7 iOS | 阻塞：macOS + Xcode + 证书 |
 
@@ -72,7 +72,7 @@
 - **阶段8 已完**：前置 Android E2E（login→enter→render→move PASS）；第1项 战斗触控 HUD 三增量（摇杆 11 用例 / 自动战斗 6 用例+真实击杀 E2E / HUD 渲染 7 用例）+ 稳定性修复（keepalive 独立心跳、GL 三角形规范拆分、模拟器帧率适配）；8-0 适配层（X-1/X-2/8-0 三探针 26 用例）；第2项 增量1 背包按钮（bagverify 8/8 + 冒烟截图含背包按钮，tag `stage8-bag-v1`）；第2项 增量2 背包面板交互（baginteractverify 7/7，见任务 `8-2-2`）；第2项 增量3 装备穿戴（equipverify 5/5，见任务 `8-2-3`）；第2项 增量4 药品使用（useitemverify 6/6，见任务 `8-2-4`）；第2项 增量5 地面拾取（pickupverify 6/6，见任务 `8-2-5`）；第3项 增量1 NPC 对话（npcverify 6/6 + net-npc 回归 PASS，见任务 `8-3-1`）；第3项 增量2 商店买卖（shopverify 9/9 + 相关回归 PASS，见任务 `8-3-2`）。
 - **sanduan 提取（交叉工作流）**：P0 对象模型补全（SpellObject + ItemObject 逐字移植 + GameSession 派发 + FloorItems 槽位，`ObjectModelVerify` 24/24，见任务 `P0`）；P1 OutLine 描边复刻（CrystalSpriteOutline shader + DrawOutline 光环，图集兼容，`OutlineVerify` 3/3，见任务 `P1-outline`）；P1 光源脉冲补 R5 + AmbientLightBlend 对照（LightPulse + `CRYSTAL_TIME` 脉冲模式，`lightpulseverify` 3 时刻 PASS，维持 R5 方案，见任务 `P1-lightpulse`）；P2 Android 软键盘桥（SoftKeyboardBridge 纯逻辑核心 + ISoftKeyboard seam + UnitySoftKeyboard 包装，`SoftKeyboardVerify` 8/8，见任务 `P2-softkeyboard`）；P2 分辨率缩放统一（ScreenMetrics 单一扇出 + ToUi 纯镜像对照决策，`ResolutionVerify` 14/14，见任务 `P2-resolution`）。
 
-**当前在途**：阶段8 第3项 增量3——仓库存取触控化（仓库 10×16 网格存取/分页）。见任务 `8-3-3`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 增量1 NPC 对话已收口（8-3-1 ✅），第3项 增量2 商店买卖已收口（8-3-2 ✅）。
+**当前在途**：阶段8 第4项 增量1——任务四窗触控化（任务列表/日记/详情/追踪）。见任务 `8-4-1`。sanduan 提取 P0-P2 已收口（2026-08-08，优先级表全 ✅），第2项 背包与物品已全收口（8-2-1..8-2-5 ✅），第3项 NPC/商店/仓库 已全收口（8-3-1..8-3-3 ✅）。
 
 ---
 
@@ -102,7 +102,7 @@
 | 8-2-5 | 拾取（点地面物品→PickUp） | 8·第2项·增5 | ✅ | 8-2-2 | 1d |
 | 8-3-1 | NPC 对话树触控化 | 8·第3项 | ✅ | 8-2-2 | 1d |
 | 8-3-2 | 商店买卖触控化 | 8·第3项 | ✅ | 8-3-1 | 1d |
-| 8-3-3 | 仓库存取触控化 | 8·第3项 | 🔲 | 8-3-1 | 0.5~1d |
+| 8-3-3 | 仓库存取触控化 | 8·第3项 | ✅ | 8-3-1 | 0.5~1d |
 | 8-4-1 | 任务四窗触控化 | 8·第4项 | 🔲 | 8-3-1 | 1d |
 | 8-4-2 | 大地图触控化 | 8·第4项 | 🔲 | 8-4-1 | 0.5~1d |
 | 8-4-3 | 小地图触控化 | 8·第4项 | 🔲 | 8-4-1 | 0.5~1d |
@@ -276,12 +276,20 @@
 - 验收：真机买药成功、金币扣除。
 
 #### 8-3-3 仓库存取触控化
-状态：🔲｜预估：0.5~1d｜依赖：8-3-1
+状态：✅（2026-08-08，storageverify 9/9）｜预估：0.5~1d｜依赖：8-3-1
 
 - 目标：仓库 10×16 网格存取、分页触控。
-- 开发：`StorageDialog` 触控（网格命中/分页/存取动作）；复用 PC 迭代包3。
-- 测试：探针（格命中/分页/存取）。
-- 验证：探针 PASS + PC 回归 + 冒烟。
+- 落地：
+  - `GameSession`：补 `S.UserStorage` 派发（填 `GameScene.Storage` + `StorageDialog.Show` 连带开背包）+ `S.NPCStorage` 派发（关 NPC 对话 + 弹仓库框）+ `S.StoreItem`/`S.TakeBackItem` 回声（`ApplyStorageSwap`：Success → 本地交换 + `RefreshStats`，失败仅解锁）；`InitInGameDialogs` 常驻创建 `StorageDialog`（默认隐藏，同 NPCDialog/NPCGoodsDialog 模式）。
+  - `StorageDialog`：网格 `Click` 接 `OnGridClick`——存：选中背包格（`GameScene.SelectedCell` 为 Inventory 且有物品）→ 点空仓库格 → `C.StoreItem{From=背包格,To=仓库格}`（目标被占静默，服务端权威）；取：点有物品仓库格 → 扫背包首空格（`BeltIdx` 起）→ `C.TakeBackItem{From=仓库格,To=背包格}`。双格 `Locked` 防重复双击，回声解锁（成功失败都解锁）。
+  - `MobileBootstrap` 移动守卫：`BackHandler` 仓库关闭（NPC 之后、商店之前）；`uiOpen`/`bagOpen` 追加 `StorageDialog.Visible`（面板开时暂停摇杆/战斗/拾取）。
+- 测试：`StorageVerify` 探针 9 用例（UserStorage 填格+弹框+背包连带 / NPCStorage 关NPC+弹框 / 选背包格点空仓库格存+双格锁 / 目标被占静默不发包 / 点有物品格取+找首空格 / StoreItem 回声交换+解锁 / TakeBackItem 回声 / 分页切换可见性+按钮态 / 关闭隐藏）。
+- 验证：storageverify 9/9 PASS + 相关回归（shopverify 9/9、npcverify 6/6、baginteract 7/7、equip 5/5、useitem 6/6、pickup 6/6）PASS。
+- 对照决策：
+  - **存取交互放 Core `StorageDialog`**（对齐 `NPCGoodsDialog.BuyItem` 模式），地图 tap 只负责开框。
+  - **`MouseDown` 快照选中态**：`MirItemCell.OnMouseClick` 会先把有物品格自身设为 `SelectedCell` 再触发 Click，若用 Click 时读选中态，"选背包格→点已占用仓库格"会被误判成取出 → 在 `MouseDown` 事件快照按下前选中态（`_downSelection`），占用格时静默。
+  - **回声解锁按槽位扫**：`InventoryDialog.Grid` 下标≠物品槽位（`Grid[0].ItemSlot=6`），解锁须按 `ItemSlot` 扫描定位真实格；仓库 `StorageDialog.Grid[to]` 下标即槽位（存=To、取=From 双向映射）。
+  - 仓库密码全套（MirInputBox/MirMessageBox/C.SetStoragePassword/C.UnlockStorage/S.*Result）、RentButton 租赁、升级仓库 `GetCell` 不移植（依赖对话框/未用，裁剪注释已记录）。
 - 提交：`feat(阶段8): 仓库存取触控化`。
 - 验收：真机存取物品成功。
 

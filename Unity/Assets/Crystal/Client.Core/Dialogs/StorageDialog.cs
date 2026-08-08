@@ -2,6 +2,7 @@ using System;
 using Crystal.Client.Core.MirMath;
 using Client.MirControls;
 using Client.MirGraphics;
+using Client.MirObjects;
 using Client.MirSounds;
 using C = ClientPackets;
 using Client.MirNetwork;
@@ -21,6 +22,11 @@ namespace Client.MirScenes.Dialogs
         public MirButton Storage1Button, Storage2Button, RentButton, ProtectButton, CloseButton;
         public MirImageControl LockedPage;
         public MirLabel RentalLabel, StoragePasswordLabel;
+
+        // 存取的"来源选中格"快照：MirItemCell.OnMouseClick 会先改写 GameScene.SelectedCell（有物品的格
+        // 会把自身置为选中），再用它判断"选中背包格→点仓库格"会误判为取出。MouseDown 先于 Click 触发，
+        // 在此快照真正的按下前选中态。
+        private MirItemCell _downSelection;
 
         public StorageDialog()
         {
@@ -152,7 +158,45 @@ namespace Client.MirScenes.Dialogs
 
                     if (idx >= Globals.StorageGridSize)
                         Grid[idx].Visible = false;
+
+                    // 8-3-3 存取触控：点仓库格统一入口（选中背包格→存；有物品格→取）。
+                    Grid[idx].MouseDown += (o, e) => _downSelection = GameScene.SelectedCell;
+                    Grid[idx].Click += (o, e) => OnGridClick((MirItemCell)o);
                 }
+            }
+        }
+
+        // 8-3-3 仓库存取（触控）：服务器 C.StoreItem{From=背包格,To=仓库格} 存 /
+        // C.TakeBackItem{From=仓库格,To=背包格} 取，回声 S.* 回流交换+解锁（GameSession 已派发）。
+        // 存：背包格已选中（SelectedCell 为 Inventory 且有物品）→ 存入本仓库格（目标空才发，服务端权威校验）；
+        // 取：本格有物品 → 找背包首空格取出（无空格静默不发包）。Locked 双格防重复双击。
+        private void OnGridClick(MirItemCell cell)
+        {
+            if (cell == null || cell.Locked) return;
+
+            var user = MapObject.User;
+            var sel = _downSelection ?? GameScene.SelectedCell;
+            _downSelection = null;
+            if (user == null) return;
+
+            // 存
+            if (sel != null && sel.GridType == MirGridType.Inventory && sel.Item != null && !sel.Locked)
+            {
+                if (cell.Item != null) return; // 目标被占，静默（服务端会拒）
+                Network.Enqueue(new C.StoreItem { From = sel.ItemSlot, To = cell.ItemSlot });
+                sel.Locked = true;
+                cell.Locked = true;
+                return;
+            }
+
+            // 取
+            if (cell.Item == null) return;
+            for (int i = user.BeltIdx; i < user.Inventory.Length; i++)
+            {
+                if (user.Inventory[i] != null) continue;
+                Network.Enqueue(new C.TakeBackItem { From = cell.ItemSlot, To = i });
+                cell.Locked = true;
+                return;
             }
         }
 

@@ -240,6 +240,18 @@ namespace Crystal.Client.Rendering
                 case (short)ServerPacketIds.NPCGoods:
                     NpcGoods((S.NPCGoods)p);
                     break;
+                case (short)ServerPacketIds.StoreItem:
+                    StoreItem((S.StoreItem)p);
+                    break;
+                case (short)ServerPacketIds.TakeBackItem:
+                    TakeBackItem((S.TakeBackItem)p);
+                    break;
+                case (short)ServerPacketIds.UserStorage:
+                    UserStorage((S.UserStorage)p);
+                    break;
+                case (short)ServerPacketIds.NPCStorage:
+                    NpcStorage();
+                    break;
                 case (short)ServerPacketIds.Disconnect:
                     State = GameSessionState.Disconnected;
                     OnDisconnected?.Invoke();
@@ -326,6 +338,81 @@ namespace Crystal.Client.Rendering
             foreach (var info in GameScene.ItemInfoList)
                 if (info.Index == index) return info;
             return null;
+        }
+
+        // ===== 仓库（8-3-3）=====
+        // S.UserStorage：仓库物品全量 → GameScene.Storage（本地镜像快照，StorageDialog 网格绑定源）+
+        // 开仓库框。服务端 SendStorage 可能因密码未解锁早退（仅发 S.NPCStorage），届时仅开框不填数。
+        internal static void UserStorage(S.UserStorage p)
+        {
+            var scene = GameScene.Scene;
+            if (scene == null || p.Storage == null) return;
+            for (int i = 0; i < GameScene.Storage.Length && i < p.Storage.Length; i++)
+                GameScene.Storage[i] = p.Storage[i];
+            if (scene.StorageDialog == null)
+                scene.StorageDialog = new StorageDialog { Parent = scene, Visible = false };
+            scene.StorageDialog.Show();
+        }
+
+        // S.NPCStorage：仓库 NPC 应答（关对话 + 开仓库框）。@STORAGE 时服务端先发 S.UserStorage 再发本包，
+        // 密码未解锁时仅本包 → 仓库框仍开（页面1 基础格，LockedPage 在页面2 展示，密码流程未移植）。
+        internal static void NpcStorage()
+        {
+            var scene = GameScene.Scene;
+            if (scene == null) return;
+            if (scene.NPCDialog != null) scene.NPCDialog.Hide();
+            if (scene.StorageDialog == null)
+                scene.StorageDialog = new StorageDialog { Parent = scene, Visible = false };
+            scene.StorageDialog.Show();
+        }
+
+        // S.StoreItem 回声：存（From=背包格, To=仓库格）。Success → 本地交换（服务器权威）+ 解锁双格。
+        internal static void StoreItem(S.StoreItem p)
+        {
+            ApplyStorageSwap(p.From, p.To, p.Success, isDeposit: true);
+        }
+
+        // S.TakeBackItem 回声：取（From=仓库格, To=背包格）。Success → 本地交换 + 解锁双格。
+        internal static void TakeBackItem(S.TakeBackItem p)
+        {
+            ApplyStorageSwap(p.From, p.To, p.Success, isDeposit: false);
+        }
+
+        // 仓库交换本地应用（回声成功后对齐服务端真实格子）+ 解锁（成功失败都解，防死锁）。
+        static void ApplyStorageSwap(int from, int to, bool success, bool isDeposit)
+        {
+            var scene = GameScene.Scene;
+            var user = MapObject.User;
+            if (scene == null || user == null) return;
+
+            var inv = user.Inventory;
+            var storage = GameScene.Storage;
+            bool okFrom = from >= 0 && from < inv.Length;
+            bool okTo = to >= 0 && to < storage.Length;
+            if (success && okFrom && okTo)
+            {
+                if (isDeposit) { storage[to] = inv[from]; inv[from] = null; }
+                else { inv[to] = storage[from]; storage[from] = null; }
+                try { user.RefreshStats(); }
+                catch (Exception ex) { Debug.LogError($"[gamesession] storage-swap stats {ex.GetType().Name}: {ex.Message}"); }
+            }
+
+            // 存储槽位按方向取：存=To(仓库格)、取=From(仓库格)；背包槽位反之。Grid[slot] 下标即槽位。
+            int storeSlot = isDeposit ? to : from;
+            bool okStore = isDeposit ? okTo : okFrom;
+            if (scene.StorageDialog != null && okStore)
+                scene.StorageDialog.Grid[storeSlot].Locked = false;
+            if (scene.InventoryDialog?.Grid != null)
+            {
+                // Grid 下标≠物品槽位（Grid[0].ItemSlot=6）：按 ItemSlot 扫描定位真实被锁格。
+                int slot = isDeposit ? from : to;
+                for (int i = 0; i < scene.InventoryDialog.Grid.Length; i++)
+                {
+                    if (scene.InventoryDialog.Grid[i].ItemSlot != slot) continue;
+                    scene.InventoryDialog.Grid[i].Locked = false;
+                    break;
+                }
+            }
         }
 
         internal static void ObjectSpell(S.ObjectSpell p)
@@ -540,6 +627,10 @@ namespace Crystal.Client.Rendering
                 // 面板（Craft/BuySub 裁剪未支持），PType 固定 Buy；NpcGoods 懒建兜底才用 p.Type。
                 var goods = new NPCGoodsDialog(PanelType.Buy) { Parent = scene, Visible = false };
                 scene.NPCGoodsDialog = goods;
+                // 仓库对话框（8-3-3）：常驻创建默认隐藏（同 NPCDialog 模式）。@STORAGE 时
+                // S.UserStorage/S.NPCStorage 派发 Show；Runtime 图集 Prguse 已就位，StorageDialog 尺寸正常。
+                var storage = new StorageDialog { Parent = scene, Visible = false };
+                scene.StorageDialog = storage;
             }
             catch (Exception ex)
             {

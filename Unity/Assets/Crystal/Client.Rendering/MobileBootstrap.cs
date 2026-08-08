@@ -91,6 +91,9 @@ namespace Crystal.Client.Rendering
                 var scene = GameScene.Scene;
                 var chr = scene != null ? scene.CharacterDialog : null;
                 if (chr != null && chr.Visible) { GameScene.SelectedCell = null; chr.Hide(); return true; }
+                // 仓库（8-3-3）：开仓库时 NPC 对话已关（S.NPCStorage），Back 优先关仓库（顶层）。
+                var store = scene != null ? scene.StorageDialog : null;
+                if (store != null && store.Visible) { store.Hide(); return true; }
                 // NPC 商店（8-3-2）：叠在对话+背包上，Back 优先关商店（顶层先关）。
                 var goods = scene != null ? scene.NPCGoodsDialog : null;
                 if (goods != null && goods.Visible) { goods.Hide(); return true; }
@@ -159,7 +162,7 @@ namespace Crystal.Client.Rendering
             // 手动摇杆优先：拖动时暂停自动战斗；背包/装备/NPC 对话面板打开期间同样暂停（面板操作不被打断）。
             // 拾取目标激活时让位给拾取走位/拾取（索敌会覆盖目标格，抢走位）。
             var uiSc = GameScene.Scene;
-            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true));
+            bool uiOpen = uiSc != null && ((uiSc.InventoryDialog?.Visible == true) || (uiSc.CharacterDialog?.Visible == true) || (uiSc.NPCDialog?.Visible == true) || (uiSc.NPCGoodsDialog?.Visible == true) || (uiSc.StorageDialog?.Visible == true));
             if (!_joystick.Active && !uiOpen)
             {
                 if (_pickup.Active) _pickup.Tick();
@@ -296,7 +299,8 @@ namespace Crystal.Client.Rendering
             var chr = scene != null ? scene.CharacterDialog : null;
             var npcDlg = scene != null ? scene.NPCDialog : null;
             var goodsDlg = scene != null ? scene.NPCGoodsDialog : null;
-            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
+            var storeDlg = scene != null ? scene.StorageDialog : null;
+            bool bagOpen = (inv != null && inv.Visible) || (chr != null && chr.Visible) || (npcDlg != null && npcDlg.Visible) || (goodsDlg != null && goodsDlg.Visible) || (storeDlg != null && storeDlg.Visible); // 面板打开期间摇杆停用（按钮仍可点击关闭）
             // 触摸坐标：透传 t.position（Unity backbuffer 像素系，X-1 touchdiag 实证），翻转由适配层统一完成。
             for (int i = 0; i < Input.touchCount; i++)
             {
